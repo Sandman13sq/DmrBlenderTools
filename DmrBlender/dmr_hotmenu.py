@@ -40,6 +40,8 @@ class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
         row.column().prop(rd, "use_simplify", text="Simplify");
         if context.object:
             row.column().prop(context.object, "show_wire", text="Wireframe")
+        if context.object and context.object.mode == 'EDIT':
+            layout.prop(bpy.context.scene.tool_settings, 'proportional_size');
 
 classlist.append(Dmr_HotMenu);
 
