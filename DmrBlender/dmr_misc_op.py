@@ -260,6 +260,32 @@ classlist.append(DMR_OP_RenameNodeOutput);
 
 # =============================================================================
 
+class DMR_OP_ToggleSubSurfOptimalDisplay(bpy.types.Operator):
+    """Tooltip"""
+    bl_label = "Toggle Optimal Display"
+    bl_idname = 'dmr.toggle_sss_optimal_display'
+    bl_description = "Toggles optimal display for objects";
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None)
+    
+    def execute(self, context):
+        for obj in bpy.data.objects:
+            if obj.hide_viewport:
+                continue;
+            if obj.type == 'MESH':
+                if obj.modifiers:
+                    for m in obj.modifiers:
+                        if m.type == 'SUBSURF':
+                            m.show_only_control_edges = not m.show_only_control_edges;
+        return {'FINISHED'}
+classlist.append(DMR_OP_ToggleSubSurfOptimalDisplay);
+
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)

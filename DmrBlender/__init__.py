@@ -1,16 +1,10 @@
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#  All rights reserved.
-#  ***** GPL LICENSE BLOCK *****
-
-# <pep8 compliant>
-
 bl_info = {
     'name': 'Dmr Blender Tools',
     'author': 'Dreamer13sq',
-    }
+    'category': 'All',
+    'version': (0, 1),
+    'blender': (2, 90, 0)
+}
 
 # can use importlib.reload here instead 
 import bpy
@@ -61,7 +55,7 @@ def register():
                 sys.modules[currentModuleName].register()
  
 def unregister():
-    for currentModuleName in modulesFullNames.values():
+    for currentModuleName in reverse(modulesFullNames.values()[:]):
         if currentModuleName in sys.modules:
             if hasattr(sys.modules[currentModuleName], 'unregister'):
                 sys.modules[currentModuleName].unregister()

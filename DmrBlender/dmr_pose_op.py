@@ -88,9 +88,10 @@ class DMR_PoseReplace(Operator):
         bpy.ops.object.mode_set(mode = 'OBJECT');
         
         oldactive = context.active_object;
-        target = FetchArmature(context.active_object);
-        bpy.context.view_layer.objects.active = target;
-        poselib = target.pose_library;
+        armobj = context.object
+        armobj = armobj if (armobj and armobj.type == 'ARMATURE') else [m for m in armobj.modifiers if m.type == 'ARMATURE'][0].object
+        bpy.context.view_layer.objects.active = armobj;
+        poselib = armobj.pose_library;
         poseindex = poselib.pose_markers.active_index;
         marker = poselib.pose_markers[poseindex];
         
