@@ -80,7 +80,6 @@ class DmrToolsPanel_PoseNav(bpy.types.Panel): # ------------------------------
                     row.operator("poselib.action_sanitize", icon='HELP', text='Sanitize')
             else:
                 layout.template_ID(active, "pose_library", new="poselib.new", unlink="poselib.unlink")
-            
 classlist.append(DmrToolsPanel_PoseNav);
 
 # ==========================================================================
@@ -164,8 +163,9 @@ class DmrToolsPanel_BoneGroups(bpy.types.Panel): # -----------------------------
             sub = c.row(align=True)
             sub.operator("pose.group_select", text="Select")
             sub.operator("pose.group_deselect", text="Deselect")
-
             
+            sub = c.row(align=True)
+            sub.operator("dmr.bone_group_isolate", text="Isolate")
 classlist.append(DmrToolsPanel_BoneGroups);
 
 # ==========================================================================

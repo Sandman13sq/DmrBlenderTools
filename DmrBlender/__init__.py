@@ -21,11 +21,13 @@ modulesNames = [
     'dmr_vcolor_op',
     'dmr_vertex_op',
     'dmr_vgroup_op',
+    'dmr_action_op',
     
     'dmr_pose_panel',
     'dmr_shapekey_panel',
     'dmr_vcolor_panel',
     'dmr_vgroup_panel',
+    'dmr_action_panel',
 ]
 
 import sys

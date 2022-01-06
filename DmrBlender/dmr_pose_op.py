@@ -182,7 +182,7 @@ classlist.append(DMR_PoseBoneToView);
 
 # =============================================================================
 
-class DMR_FIXRIGHTBONESNAMES(bpy.types.Operator):
+class DMR_FixRightBoneNames(bpy.types.Operator):
     """Tooltip"""
     bl_label = "Fix Right Bone Names"
     bl_idname = 'dmr.fix_right_bone_names'
@@ -219,7 +219,7 @@ class DMR_FIXRIGHTBONESNAMES(bpy.types.Operator):
             bpy.ops.object.mode_set(mode = lastobjectmode);
                         
         return {'FINISHED'}
-classlist.append(DMR_FIXRIGHTBONESNAMES);
+classlist.append(DMR_FixRightBoneNames);
 
 # =============================================================================
 
@@ -321,13 +321,208 @@ classlist.append(DMR_BoneNamesByLocation);
 
 # =============================================================================
 
+class DMR_BoneSelectMore(bpy.types.Operator):
+    """Tooltip"""
+    bl_label = "Select More Bones"
+    bl_idname = 'dmr.bone_select_more'
+    bl_description = "Selects more connected bones";
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None and
+               context.object.type == 'ARMATURE' and
+               context.object.mode == 'POSE')
+    
+    def execute(self, context):
+        active = bpy.context.view_layer.objects.active;
+        if active:
+            lastobjectmode = bpy.context.active_object.mode;
+            bpy.ops.object.mode_set(mode = 'OBJECT'); # Update selected
+            bones = [b for b in active.data.bones if b.select];
+            for b in bones:
+                for c in b.children:
+                    if c.use_connect:
+                        c.select = True
+            bpy.ops.object.mode_set(mode = lastobjectmode);
+                        
+        return {'FINISHED'}
+classlist.append(DMR_BoneSelectMore);
+
+# =============================================================================
+
+class DMR_BoneSelectMoreParent(bpy.types.Operator):
+    """Tooltip"""
+    bl_label = "Select More Parent Bones"
+    bl_idname = 'dmr.bone_select_more_parent'
+    bl_description = "Selects more connected parent bones";
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None and
+               context.object.type == 'ARMATURE' and
+               context.object.mode == 'POSE')
+    
+    def execute(self, context):
+        active = bpy.context.view_layer.objects.active;
+        if active:
+            lastobjectmode = bpy.context.active_object.mode;
+            bpy.ops.object.mode_set(mode = 'OBJECT'); # Update selected
+            bones = [b for b in active.data.bones if b.select];
+            newselect = []
+            for b in bones:
+                if b.parent and b.use_connect:
+                    newselect.append(b.parent)
+            for b in newselect:
+                b.select = True
+            bpy.ops.object.mode_set(mode = lastobjectmode);
+                        
+        return {'FINISHED'}
+classlist.append(DMR_BoneSelectMoreParent);
+
+# =============================================================================
+
+class DMR_BoneSelectLess(bpy.types.Operator):
+    """Tooltip"""
+    bl_label = "Select Less Bones"
+    bl_idname = 'dmr.bone_select_less'
+    bl_description = "Selects less connected bones";
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None and
+               context.object.type == 'ARMATURE' and
+               context.object.mode == 'POSE')
+    
+    def execute(self, context):
+        def FindEndofChain(b):
+            if b.children:
+                for c in b.children:
+                    if c.select:
+                        return FindEndofChain(c)
+            return b
+        
+        active = bpy.context.view_layer.objects.active;
+        if active:
+            lastobjectmode = bpy.context.active_object.mode;
+            bpy.ops.object.mode_set(mode = 'OBJECT'); # Update selected
+            bones = [b for b in active.data.bones if b.select];
+            endbones = []
+            
+            for b in bones:
+                endbones.append(FindEndofChain(b))
+            for b in endbones:
+                b.select = False;
+            bpy.ops.object.mode_set(mode = lastobjectmode);
+                        
+        return {'FINISHED'}
+classlist.append(DMR_BoneSelectLess);
+
+# =============================================================================
+
+class DMR_BoneSelectLessParent(bpy.types.Operator):
+    """Tooltip"""
+    bl_label = "Select Less Parent Bones"
+    bl_idname = 'dmr.bone_select_less_parent'
+    bl_description = "Selects less connected parent bones";
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None and
+               context.object.type == 'ARMATURE' and
+               context.object.mode == 'POSE')
+    
+    def execute(self, context):
+        active = bpy.context.view_layer.objects.active;
+        if active:
+            lastobjectmode = bpy.context.active_object.mode;
+            bpy.ops.object.mode_set(mode = 'OBJECT'); # Update selected
+            bones = [b for b in active.data.bones if b.select];
+            endbones = []
+            
+            for b in bones:
+                if b.use_connect:
+                    if b.parent:
+                        if not b.parent.select:
+                            endbones.append(b)
+                    else:
+                        endbones.append(b)
+                else:
+                    endbones.append(b)
+            for b in endbones:
+                b.select = False;
+            bpy.ops.object.mode_set(mode = lastobjectmode);
+                        
+        return {'FINISHED'}
+classlist.append(DMR_BoneSelectLessParent);
+
+# =============================================================================
+
+class DMR_BoneGroupIsolate(bpy.types.Operator):
+    """Tooltip"""
+    bl_label = "Isolate Bone Group"
+    bl_idname = 'dmr.bone_group_isolate'
+    bl_description = "Hides bones not in bone group";
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None and
+               context.object.type == 'ARMATURE' and
+               context.object.mode == 'POSE')
+    
+    def execute(self, context):
+        active = bpy.context.view_layer.objects.active;
+        if active:
+            lastobjectmode = bpy.context.active_object.mode;
+            bpy.ops.object.mode_set(mode = 'OBJECT'); # Update selected
+            
+            bonegroup = active.pose.bone_groups.active
+            bones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group != bonegroup]
+            groupbones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group == bonegroup]
+            
+            if len([b for b in bones if not b.hide]) > 0:
+                for b in bones:
+                    b.hide = True
+            else:
+                for b in [b for b in active.data.bones if b not in groupbones]:
+                    b.hide = False
+            for b in groupbones:
+                b.hide = False
+            bpy.ops.object.mode_set(mode = lastobjectmode);
+                        
+        return {'FINISHED'}
+classlist.append(DMR_BoneGroupIsolate);
+
+# =============================================================================
+
+addon_keymaps = []
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
+    
+    # Add hotkeys
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    if kc:
+        km = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
+        kmi = km.keymap_items.new(DMR_BoneSelectMore.bl_idname, type='NUMPAD_PLUS', value='PRESS', ctrl=True, shift=False)
+        kmi = km.keymap_items.new(DMR_BoneSelectLess.bl_idname, type='NUMPAD_MINUS', value='PRESS', ctrl=True, shift=False)
+        kmi = km.keymap_items.new(DMR_BoneSelectMoreParent.bl_idname, type='NUMPAD_PLUS', value='PRESS', ctrl=True, shift=True)
+        kmi = km.keymap_items.new(DMR_BoneSelectLessParent.bl_idname, type='NUMPAD_MINUS', value='PRESS', ctrl=True, shift=True)
+        addon_keymaps.append((km, kmi))
 
 def unregister():
-    for c in classlist:
+    for c in reverse(classlist):
         bpy.utils.unregister_class(c)
+    
+    # Remove hotkeys
+    for km, kmi in addon_keymaps:
+        km.keymap_items.remove(kmi)
+    addon_keymaps.clear()
 
 if __name__ == "__main__":
     register()

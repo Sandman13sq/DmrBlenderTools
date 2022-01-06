@@ -34,22 +34,27 @@ class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
         
         row.column().operator('dmr.toggle_mirror_modifier', icon = 'MOD_MIRROR', text = '')
         
-        row = layout.row(align = 0)
-        row.scale_x = 2.0
+        row = layout.row(align = 1)
+        row.scale_x = 4.0
         row.scale_y = 1.0
         row.alignment = 'CENTER'
-        row.column().prop(rd, "use_simplify", text="Simplify")
+        row.column().prop(rd, "use_simplify", icon_only=True, icon='MOD_SUBSURF')
+        row.column().prop(bpy.context.space_data.overlay, 'show_split_normals', icon_only=True, icon='NORMALS_VERTEX_FACE')
         if obj:
-            row.column().prop(obj, "show_wire", text="Wireframe")
+            row.column().prop(obj, "show_wire", icon_only=True, icon='MOD_LATTICE')
         if obj and obj.mode == 'EDIT':
             layout.prop(bpy.context.scene.tool_settings, 'proportional_size')
         
-        row = layout.row(align = 0)
+        row = layout.row(align=1)
         row.scale_x = 2.0
         row.scale_y = 1.0
         row.alignment = 'CENTER'
         
-        row.column().operator('dmr.toggle_sss_optimal_display', icon = 'SHADING_WIRE', text = 'Optimal Display')
+        row.column().operator('dmr.toggle_sss_optimal_display', icon = 'SHADING_WIRE')
+        
+        row.operator('dmr.bone_select_more')
+        row.operator('dmr.bone_select_less')
+        
 
 classlist.append(Dmr_HotMenu)
 
