@@ -73,7 +73,7 @@ class DMR_OP_ObjectSyncAction(bpy.types.Operator):
         if object:
             if object.animation_data.action:
                 action = object.animation_data.action
-                for obj in [x for x in bpy.data.objects if x.type in {'MESH', 'ARMATURE'}]:
+                for obj in [x for x in bpy.data.objects if x.type in {'MESH', 'ARMATURE', 'EMPTY'}]:
                     try:
                         obj.animation_data.action = action;
                     except:
