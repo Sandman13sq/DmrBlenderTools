@@ -1,6 +1,8 @@
 import bpy
 
-classlist = [];
+classlist = []
+
+# =============================================================================
 
 class DMR_PT_ShapeKeyPanel(bpy.types.Panel): # ------------------------------
     bl_label = "Shape Keys"
@@ -10,39 +12,41 @@ class DMR_PT_ShapeKeyPanel(bpy.types.Panel): # ------------------------------
     
     @classmethod 
     def poll(self, context):
-        active = context.active_object;
+        active = context.active_object
         if active:
             if active.type == 'MESH' and active.mode == 'EDIT':
-                return 1;
-        return None;
+                return 1
+        return None
     
     def draw(self, context):
-        active = context.active_object;
-        layout = self.layout;
+        active = context.active_object
+        layout = self.layout
         
-        shapekeys = active.data.shape_keys;
+        shapekeys = active.data.shape_keys
         if not shapekeys:
-            return;
+            return
         
-        keyblocks = active.data.shape_keys.key_blocks;
+        keyblocks = active.data.shape_keys.key_blocks
         
-        r = layout.row(align=1);
-        r.operator('mesh.blend_from_shape');
-        r = r.row(align=1);
-        op = r.operator('mesh.blend_from_shape', text = '', icon = 'BOLD');
-        op.shape = keyblocks[0].name;
-        op.blend = 1;
-        op.add = False;
-        op = r.operator('dmr.blend_from_shape_all', text = '', icon = 'WORLD');
+        r = layout.row(align=1)
+        r.operator('mesh.blend_from_shape')
+        r = r.row(align=1)
+        op = r.operator('mesh.blend_from_shape', text = '', icon = 'BOLD')
+        op.shape = keyblocks[0].name
+        op.blend = 1
+        op.add = False
+        op = r.operator('dmr.blend_from_shape_all', text = '', icon = 'WORLD')
         
-classlist.append(DMR_PT_ShapeKeyPanel);
+classlist.append(DMR_PT_ShapeKeyPanel)
+
+# =============================================================================
 
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in classlist:
+    for c in reversed(classlist):
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

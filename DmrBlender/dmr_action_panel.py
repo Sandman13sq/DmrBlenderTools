@@ -3,6 +3,8 @@ import sys
 
 classlist = [];
 
+# =============================================================================
+
 def ActionNavDraw(self, context):
     layout = self.layout
     
@@ -46,6 +48,7 @@ def ActionNavDraw(self, context):
         row.operator('dmr.frame_range_store', text='Save')
         row.operator('dmr.frame_range_restore', text='Restore')
 
+# =============================================================================
 
 class DMR_PT_ActionNav(bpy.types.Panel): # ------------------------------
     bl_label = "Action Navigation"
@@ -74,7 +77,7 @@ def register():
     );
 
 def unregister():
-    for c in reverse(classlist):
+    for c in reversed(classlist):
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

@@ -1,16 +1,16 @@
 import bpy
 import bmesh
 
-classlist = [];
+classlist = []
 
 # =============================================================================
 
 # Source: https://blenderartists.org/t/i-want-to-move-a-vertices-to-normal-directon-of-origin-vertex-by-python/601077/3
-class DMR_OP_VERTALONGNORMAL(bpy.types.Operator):
+class DMR_OP_VertexAlongNormal(bpy.types.Operator):
     """Tooltip"""
     bl_idname = "dmr.vert_along_normal"
     bl_label = "Move Vertices along Normal"
-    bl_description = 'Moves selected vertices along their normals';
+    bl_description = 'Moves selected vertices along their normals'
     bl_options = {'REGISTER', 'UNDO'}
 
     factor : bpy.props.FloatProperty(
@@ -36,17 +36,16 @@ class DMR_OP_VERTALONGNORMAL(bpy.types.Operator):
             if v.select:
                 v.co += v.normal * self.factor
                 
-        bmesh.update_edit_mesh(me, True, False);
+        bmesh.update_edit_mesh(me, True, False)
         return {'FINISHED'}
-classlist.append(DMR_OP_VERTALONGNORMAL);
+classlist.append(DMR_OP_VertexAlongNormal)
 
 # =============================================================================
 
 class DMR_OP_SetEdgeCrease(bpy.types.Operator):
-    """Tooltip"""
     bl_label = "Set Crease"
     bl_idname = 'dmr.set_crease'
-    bl_description = "Sets edge crease value for selected edges";
+    bl_description = "Sets edge crease value for selected edges"
     bl_options = {'REGISTER', 'UNDO'}
     
     crease : bpy.props.FloatProperty(
@@ -62,30 +61,29 @@ class DMR_OP_SetEdgeCrease(bpy.types.Operator):
                 context.object.data.is_editmode)
 
     def execute(self, context):
-        crease = self.crease;
-        context = bpy.context;
-        objs = [o for o in context.selected_objects if o.type == 'MESH'];
+        crease = self.crease
+        context = bpy.context
+        objs = [o for o in context.selected_objects if o.type == 'MESH']
         
-        lastobjectmode = bpy.context.active_object.mode;
-        bpy.ops.object.mode_set(mode = 'OBJECT'); # Update selected
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
         
         for obj in objs:
             edges = [e for e in obj.data.edges if e.select]
             for e in edges:
-                e.crease = crease;
+                e.crease = crease
         
-        bpy.ops.object.mode_set(mode = lastobjectmode);
+        bpy.ops.object.mode_set(mode = lastobjectmode)
         
         return {'FINISHED'}
-classlist.append(DMR_OP_SetEdgeCrease);
+classlist.append(DMR_OP_SetEdgeCrease)
 
 # =============================================================================
 
-class DMR_OP_SELBYSHAREDMATERIAL(bpy.types.Operator):
-    """Tooltip"""
+class DMR_OP_SelectObjectByMaterial(bpy.types.Operator):
     bl_label = "Select Objects by shared Material"
-    bl_idname = 'dmr.select_by_material'
-    bl_description = "Selects objects that contain the same material as the active object's active material";
+    bl_idname = 'dmr.select_object_by_material'
+    bl_description = "Selects objects that contain the same material as the active object's active material"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
@@ -95,73 +93,75 @@ class DMR_OP_SELBYSHAREDMATERIAL(bpy.types.Operator):
                 context.object.data.is_editmode)
     
     def execute(self, context):
-        active = bpy.context.view_layer.objects.active;
+        active = bpy.context.view_layer.objects.active
         if active:
-            targetmat = active.active_material;
+            targetmat = active.active_material
             if targetmat:
                 for obj in bpy.data.objects:
                     if obj.type == 'MESH':
                         if not (obj.hide_viewport or obj.hide_select):
                             for m in obj.data.materials:
                                 if m == targetmat:
-                                    obj.select_set(1);
-                                    break;
+                                    obj.select_set(1)
+                                    break
         return {'FINISHED'}
-classlist.append(DMR_OP_SELBYSHAREDMATERIAL);
+classlist.append(DMR_OP_SelectObjectByMaterial)
 
 # =============================================================================
 
-class DMR_OP_RESETSHAPEKEYSVERTEX(bpy.types.Operator):
+class DMR_OP_ResetShapeKeyVertex(bpy.types.Operator):
     bl_label = "Reset Vertex Shape Keys"
     bl_idname = 'dmr.reset_vertex_shape_keys'
-    bl_description = 'Sets shape key positions of selected vertices to "Basis" for all keys';
+    bl_description = 'Sets shape key positions of selected vertices to "Basis" for all keys'
+    bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        oldactive = context.active_object;
+        oldactive = context.active_object
         
         if len(context.selected_objects) == 0:
-            self.report({'WARNING'}, "No objects selected");
+            self.report({'WARNING'}, "No objects selected")
             return {'FINISHED'}
         
         for obj in context.selected_objects:
             if obj.type == "MESH":
                 # No Shape Keys exist for object
-                if obj.data.shape_keys == None: continue;
-                shape_keys = obj.data.shape_keys.key_blocks;
-                if len(shape_keys) == 0: continue;
+                if obj.data.shape_keys == None: continue
+                shape_keys = obj.data.shape_keys.key_blocks
+                if len(shape_keys) == 0: continue
                 
-                keyindex = {};
-                basis = shape_keys[0];
-                bpy.context.view_layer.objects.active = obj;
-                oldactivekey = obj.active_shape_key_index;
+                keyindex = {}
+                basis = shape_keys[0]
+                bpy.context.view_layer.objects.active = obj
+                oldactivekey = obj.active_shape_key_index
                 
                 for i in range(0, len(shape_keys)):
-                    keyindex[ shape_keys[i].name ] = i;
+                    keyindex[ shape_keys[i].name ] = i
                 
                 # For all keys...
                 for sk in shape_keys:
-                    obj.active_shape_key_index = keyindex[sk.name];
-                    bpy.ops.mesh.blend_from_shape(shape = basis.name, add = False);
+                    obj.active_shape_key_index = keyindex[sk.name]
+                    bpy.ops.mesh.blend_from_shape(shape = basis.name, add = False)
                 
-                obj.active_shape_key_index = oldactivekey;
+                obj.active_shape_key_index = oldactivekey
                 
-        bpy.context.view_layer.objects.active = oldactive;
+        bpy.context.view_layer.objects.active = oldactive
             
         return {'FINISHED'}
-classlist.append(DMR_OP_RESETSHAPEKEYSVERTEX);
+classlist.append(DMR_OP_ResetShapeKeyVertex)
 
 # =============================================================================
 
 class DMR_OP_QuickVertexGroupTransfer(bpy.types.Operator):
     bl_label = "Quick Vertex Group Transfer"
     bl_idname = 'dmr.quick_group_transfer'
-    bl_description = "Transfers weights of active object's vertices to selected object's vertices";
+    bl_description = "Transfers weights of active object's vertices to selected object's vertices"
+    bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        oldactive = context.active_object;
+        oldactive = context.active_object
         
         if len(context.selected_objects) == 0:
-            self.report({'WARNING'}, "No objects selected");
+            self.report({'WARNING'}, "No objects selected")
             return {'FINISHED'}
         
         bpy.ops.object.data_transfer(
@@ -173,35 +173,36 @@ class DMR_OP_QuickVertexGroupTransfer(bpy.types.Operator):
             mix_mode='REPLACE', mix_factor=1)
             
         return {'FINISHED'}
-classlist.append(DMR_OP_QuickVertexGroupTransfer);
+classlist.append(DMR_OP_QuickVertexGroupTransfer)
 
 # =============================================================================
 
 class DMR_OP_MirrorAcrossCursor(bpy.types.Operator):
-    """Tooltip"""
     bl_idname = "object.mirror_across_cursor"
     bl_label = "Mirror Across Cursor"
+    bl_description = "Mirrors selected vertices across the 3D cursor"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        active = context.active_object;
-        return active is not None and active.mode == 'EDIT';
+        active = context.active_object
+        return active is not None and active.mode == 'EDIT'
 
     def execute(self, context):
-        toolsettings = context.scene.tool_settings;
-        lastsetting = toolsettings.transform_pivot_point;
-        toolsettings.transform_pivot_point = 'CURSOR';
+        toolsettings = context.scene.tool_settings
+        lastsetting = toolsettings.transform_pivot_point
+        toolsettings.transform_pivot_point = 'CURSOR'
         
         bpy.ops.transform.mirror(orient_type='LOCAL', 
             orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), 
             orient_matrix_type='LOCAL', 
             constraint_axis=(True, False, False)
-            );
-        bpy.ops.mesh.flip_normals();
+            )
+        bpy.ops.mesh.flip_normals()
         
-        toolsettings.transform_pivot_point = lastsetting;
+        toolsettings.transform_pivot_point = lastsetting
         return {'FINISHED'}
-classlist.append(DMR_OP_MirrorAcrossCursor);
+classlist.append(DMR_OP_MirrorAcrossCursor)
 
 # =============================================================================
 
@@ -210,7 +211,7 @@ def register():
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in classlist:
+    for c in reversed(classlist):
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

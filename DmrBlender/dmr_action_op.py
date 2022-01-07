@@ -4,6 +4,30 @@ classlist = [];
 
 # =============================================================================
 
+class DMR_OP_PlaybackRangeFromAction(bpy.types.Operator):
+    bl_label = "Playback Range from Action"
+    bl_idname = 'dmr.playback_range_from_action'
+    bl_description = "Sets playback range to range of keyframes for action"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None)
+    
+    def execute(self, context):
+        obj = context.object
+        if obj:
+            if obj.animation_data:
+                action = obj.animation_data.action
+                framerange = action.frame_range
+                context.scene.frame_start = framerange[0]+1
+                context.scene.frame_end = framerange[1]-1
+                        
+        return {'FINISHED'}
+classlist.append(DMR_OP_PlaybackRangeFromAction)
+
+# =============================================================================
+
 class DMR_OP_ActionWriteFrameRange(bpy.types.Operator):
     bl_label = "Store Frame Range"
     bl_idname = 'dmr.frame_range_store'
@@ -65,7 +89,7 @@ def register():
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in reverse(classlist):
+    for c in reversed(classlist):
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

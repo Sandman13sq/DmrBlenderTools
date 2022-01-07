@@ -2,6 +2,8 @@ import bpy
 
 classlist = []
 
+# =============================================================================
+
 class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
     bl_label = "Dmr Hot Menu"
     bl_idname = "DMR_PT_HOTMENU"
@@ -23,12 +25,12 @@ class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
             emboss=active.mode=='EDIT' if active else 0)
         
         c = row.row(align = 1)
-        c.operator('dmr.reset_3dcursor', icon = 'PIVOT_CURSOR', text = '')
+        c.operator('dmr.reset_3d_cursor', icon = 'PIVOT_CURSOR', text = '')
         c = c.column(align = 1)
-        c.operator('dmr.zero_3dcursor_x', text = 'x')
+        c.operator('dmr.reset_3d_cursor_x', text = 'x')
         c.scale_x = 0.05
         
-        row.column().operator('dmr.toggle_pose', icon = 'ARMATURE_DATA', text = '')
+        row.column().operator('dmr.toggle_pose_all', icon = 'ARMATURE_DATA', text = '')
         
         row.column().operator('dmr.image_reload', icon = 'IMAGE_DATA', text = '')
         
@@ -55,19 +57,16 @@ class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
         row.operator('dmr.bone_select_more')
         row.operator('dmr.bone_select_less')
         
-
 classlist.append(Dmr_HotMenu)
+
+# =============================================================================
 
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
-    
-    bpy.types.Scene.dmr_syncplaybackframes = bpy.props.BoolProperty(
-        name="Sync Playback Frames to Action", default = 0
-    )
 
 def unregister():
-    for c in classlist:
+    for c in reversed(classlist):
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":
