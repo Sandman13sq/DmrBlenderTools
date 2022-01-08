@@ -13,6 +13,7 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
     
     thresh : bpy.props.FloatProperty(
         name="Matching Threshold",
+        description='Threshold for color comparison',
         soft_min=0.0,
         soft_max=1.0,
         default = 0.01
@@ -127,6 +128,7 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
     
     mixamount : bpy.props.FloatProperty(
         name="Mix Amount",
+        description='Amount to blend from old color to new color',
         soft_min=0.0,
         soft_max=1.0,
         default=1.0
@@ -169,6 +171,7 @@ class DMR_OP_SetVertexColorChannel(bpy.types.Operator):
     
     channelindex : bpy.props.IntProperty(
         name="Channel Index",
+        description='Color Channel to modify',
         soft_min=0,
         soft_max=3,
         default=0
@@ -176,6 +179,7 @@ class DMR_OP_SetVertexColorChannel(bpy.types.Operator):
     
     channelvalue : bpy.props.FloatProperty(
         name="Channel Value",
+        description='New value for color channel',
         soft_min=0.0,
         soft_max=1.0,
         default=1.0
@@ -222,6 +226,7 @@ class DMR_OP_VertexColorClearAlpha(bpy.types.Operator):
     
     clearvalue : bpy.props.FloatProperty(
         name="Clear Value",
+        description='New value for alpha channel',
         soft_min=0.0,
         soft_max=1.0
     )
@@ -375,6 +380,7 @@ class DMR_OP_MergeVertexColors(bpy.types.Operator):
     
     mixamount : bpy.props.FloatProperty(
         name="Mix Amount",
+        description='Amount to blend from old color to new color',
         soft_min=0.0,
         soft_max=1.0,
         default=1.0

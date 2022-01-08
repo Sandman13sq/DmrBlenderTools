@@ -4,9 +4,8 @@ classlist = []
 
 # =============================================================================
 
-class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
+class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
     bl_label = "Dmr Hot Menu"
-    bl_idname = "DMR_PT_HOTMENU"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Item" # Name of sidebar
@@ -54,10 +53,7 @@ class Dmr_HotMenu(bpy.types.Panel): # ------------------------------
         
         row.column().operator('dmr.toggle_sss_optimal_display', icon = 'SHADING_WIRE')
         
-        row.operator('dmr.bone_select_more')
-        row.operator('dmr.bone_select_less')
-        
-classlist.append(Dmr_HotMenu)
+classlist.append(DMR_PT_HotMenu)
 
 # =============================================================================
 

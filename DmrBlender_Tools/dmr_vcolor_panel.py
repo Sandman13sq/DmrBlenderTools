@@ -4,36 +4,34 @@ classlist = []
 
 # =============================================================================
 
-class DmrToolsPanel_VertexColors(bpy.types.Panel): # ------------------------------
+class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ------------------------------
     bl_label = "Vertex Colors"
-    bl_idname = "DMR_PT_VERTEXCOLORS"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Dmr Edit" # Name of sidebar
+    bl_category = "Mesh" # Name of sidebar
     bl_options = {'DEFAULT_CLOSED'}
-    COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_EEVEE', 'BLENDER_WORKBENCH'}
     
     @classmethod 
     def poll(self, context):
         active = context.active_object
         if active:
             if active.type == 'MESH':
-                m = active.mode
-                if m == 'EDIT' or m == 'VERTEX_PAINT' or m == 'OBJECT':
-                    return 1
+                return active.mode in {'EDIT', 'VERTEX_PAINT', 'OBJECT'}
         return None
     
     def draw(self, context):
         active = context.active_object
         mode = active.mode
         layout = self.layout
-        col = bpy.context.scene.editmodecolor
-        col255 = [x*255 for x in col[:3]]
-        #colhex = '%02x%02x%02x' % (int(col[0]*255), int(col[1]*255), int(col[2]*255))
+        color = bpy.context.scene.editmodecolor
+        col255 = [x*255 for x in color[:3]]
+        #colhex = '%02x%02x%02x' % (int(color[0]*255), int(color[1]*255), int(color[2]*255))
         #colhex = colhex.upper()
         
-        if mode == 'EDIT' or mode == 'VERTEX_PAINT':
-            colorarea = layout.row(align = 1)
+        if mode in {'EDIT', 'VERTEX_PAINT'}:
+            col = layout.column(align=1)
+            
+            colorarea = col.row(align = 1)
             row = colorarea.row(align = 1)
             row.operator("dmr.set_vertex_color", icon='BRUSH_DATA', text="").mixamount = 1.0
             row.scale_x = 2
@@ -41,11 +39,14 @@ class DmrToolsPanel_VertexColors(bpy.types.Panel): # ---------------------------
             row.prop(context.scene, "editmodecolor", text='')
             row.operator("dmr.pick_vertex_color", icon='EYEDROPPER', text="")
             
-            row = layout.row(align = 1)
+            
+            row = col.row(align=1)
+            row.label(text = '<%d, %d, %d>   A:%.2f' % (col255[0],col255[1],col255[2], color[3]) )
+            
+            row = col.row(align = 1)
             row.operator("dmr.vc_clear_alpha", icon='MATSPHERE', text="Clear Alpha")
             
-            row = layout.row(align=1)
-            
+            row = layout.row(align = 1)
             r = row.row(align=1)
             r.label(text='Set Channel: ')
             row.operator('dmr.set_vertex_color_channel', text='', icon='COLOR_RED').channelindex = 0
@@ -54,12 +55,13 @@ class DmrToolsPanel_VertexColors(bpy.types.Panel): # ---------------------------
             row.operator('dmr.set_vertex_color_channel', text='', icon='FONT_DATA').channelindex = 3
             
             row = layout.row(align = 1)
-            row.label(text = '<%d, %d, %d>   A:%.2f' % (col255[0],col255[1],col255[2], col[3]) )
+            
             #row.label(text = colhex )
         
         me = active.data
+        vcolors = me.vertex_colors
         
-        row = layout.row(align=1)
+        row = layout.row(align=0)
         col = row.column()
         col.template_list("MESH_UL_vcols", "vcols", me, "vertex_colors", me.vertex_colors, "active_index", rows=2)
         col = row.column(align=True)
@@ -69,7 +71,7 @@ class DmrToolsPanel_VertexColors(bpy.types.Panel): # ---------------------------
         col.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
         col.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
 
-classlist.append(DmrToolsPanel_VertexColors)
+classlist.append(DMR_PT_3DViewVertexColors)
 
 # =============================================================================
 

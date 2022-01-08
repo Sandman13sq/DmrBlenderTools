@@ -127,7 +127,10 @@ class DMR_OP_RemoveEmptyVertexGroups(bpy.types.Operator):
     bl_description = 'Removes Vertex Groups with no weight data'
     bl_options = {'REGISTER', 'UNDO'}
     
-    removeZero : bpy.props.BoolProperty(name = "Ignore Zero Weights", default = True)
+    removeZero : bpy.props.BoolProperty(
+        name = "Ignore Zero Weights", default = True,
+        description = 'Ignore weights of 0 when checking if groups are empty'
+        )
     
     def invoke(self, context, event):
         wm = context.window_manager
@@ -199,7 +202,11 @@ class DMR_OP_RemoveRightVertexGroups(bpy.types.Operator):
         
         # Check if any mirror groups exists
         for vg in vgroups:
-            name = vg.name
+            try:
+                name = vg.name # Weird missing byte errer here sometimes
+            except:
+                continue
+            
             if name[-2:] in lsuffixes:
                 othername = name[0:-1] + 'r'
                 if othername in groupnames:
@@ -241,6 +248,7 @@ class DMR_OP_RemoveFromSelectedBones(bpy.types.Operator):
         
         if len(armature) == 0:
             self.report({'WARNING'}, 'No armature selected')
+            bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
             return {'FINISHED'}
         
         # Find bone names
@@ -326,7 +334,17 @@ class DMR_OP_MoveVertexGroupToEnd(bpy.types.Operator):
     bl_description = 'Moves active vertex group to end of vertex group list'
     bl_options = {'REGISTER', 'UNDO'}
     
-    bottom : bpy.props.BoolProperty(name = "Bottom of List", default = 0)
+    bottom : bpy.props.BoolProperty(
+        name="Bottom of List", default = 0,
+        description='Move vertex group to bottom of list instead of top'
+        )
+    
+    @classmethod
+    def poll(self, context):
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                return obj.vertex_groups
+        return None
     
     def execute(self, context):
         for selectedObject in context.selected_objects:

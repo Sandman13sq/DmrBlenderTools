@@ -4,40 +4,39 @@ classlist = []
 
 # =============================================================================
 
-class DMR_PT_ShapeKeyPanel(bpy.types.Panel): # ------------------------------
+class DMR_PT_3DViewShapeKeys(bpy.types.Panel): # ------------------------------
     bl_label = "Shape Keys"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Dmr Edit" # Name of sidebar
+    bl_category = "Mesh" # Name of sidebar
     
     @classmethod 
     def poll(self, context):
         active = context.active_object
-        if active:
-            if active.type == 'MESH' and active.mode == 'EDIT':
-                return 1
-        return None
+        return active and active.type == 'MESH'
     
     def draw(self, context):
         active = context.active_object
         layout = self.layout
         
+        bpy.types.DATA_PT_shape_keys.draw(self, context)
+        
         shapekeys = active.data.shape_keys
-        if not shapekeys:
-            return
+        if shapekeys:
+            keyblocks = active.data.shape_keys.key_blocks
+            
+            r = layout.row(align=1)
+            r.operator('mesh.blend_from_shape')
+            r = r.row(align=1)
+            op = r.operator('mesh.blend_from_shape', text = '', icon = 'BOLD')  
+            if active and active.mode == 'EDIT':
+                op.shape = keyblocks[0].name
+                op.blend = 1
+                op.add = False
+            
+            op = r.operator('dmr.blend_from_shape_all', text = '', icon = 'WORLD')
         
-        keyblocks = active.data.shape_keys.key_blocks
-        
-        r = layout.row(align=1)
-        r.operator('mesh.blend_from_shape')
-        r = r.row(align=1)
-        op = r.operator('mesh.blend_from_shape', text = '', icon = 'BOLD')
-        op.shape = keyblocks[0].name
-        op.blend = 1
-        op.add = False
-        op = r.operator('dmr.blend_from_shape_all', text = '', icon = 'WORLD')
-        
-classlist.append(DMR_PT_ShapeKeyPanel)
+classlist.append(DMR_PT_3DViewShapeKeys)
 
 # =============================================================================
 

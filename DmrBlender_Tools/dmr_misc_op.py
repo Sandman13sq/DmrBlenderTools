@@ -46,63 +46,6 @@ classlist.append(DMR_OP_ToggleEditModeWeights)
 
 # =============================================================================
 
-class DMR_OP_TogglePoseAll(bpy.types.Operator):
-    bl_label = "Toggle Pose Mode"
-    bl_idname = 'dmr.toggle_pose_all'
-    bl_description = 'Toggles Pose Mode for all armatures'
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        checked = []
-        
-        for o in context.scene.objects:
-            if o.type == 'ARMATURE':
-                if o.data in checked:
-                    continue
-                checked.append(o.data)
-                
-                armature = o.data
-                if armature.pose_position == 'REST':
-                    armature.pose_position = 'POSE'
-                else:
-                    armature.pose_position = 'REST'
-        return {'FINISHED'}
-classlist.append(DMR_OP_TogglePoseAll)
-
-# =============================================================================
-
-class DMR_OP_TogglePoseParent(bpy.types.Operator):
-    bl_label = "Toggle Pose Mode Parent"
-    bl_idname = 'dmr.toggle_pose_parent'
-    bl_description = "Toggles Pose Mode for current armature or active object's parent armature"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        active = bpy.context.active_object
-        armature = None
-        
-        # Find Armature (of active or active's parent)
-        if active:
-            if active.type == 'ARMATURE': armature = active
-            elif active.parent:
-                if active.parent.type == 'ARMATURE': armature = active.parent
-            elif active.type in ['MESH']:
-                if active.modifiers:
-                    for m in active.modifiers:
-                        if m.type == 'ARMATURE':
-                            if m.object and m.object.type == 'ARMATURE':
-                                armature = m.object
-        
-        if armature:
-            if armature.data.pose_position == 'REST':
-                armature.data.pose_position = 'POSE'
-            else:
-                armature.data.pose_position = 'REST'
-        return {'FINISHED'}
-classlist.append(DMR_OP_TogglePoseParent)
-
-# =============================================================================
-
 class DMR_OP_ToggleAnimation(bpy.types.Operator):
     bl_label = "Play/Pause Animation"
     bl_idname = 'dmr.play_anim'
@@ -126,55 +69,6 @@ class DMR_OP_ImageReloadAll(bpy.types.Operator):
         
         return {'FINISHED'}
 classlist.append(DMR_OP_ImageReloadAll)
-
-# =============================================================================
-
-class DMR_OP_QuickAutoSmooth(bpy.types.Operator):
-    bl_label = "Quick Auto Smooth"
-    bl_idname = 'dmr.quick_auto_smooth'
-    bl_description = "Turns on auto smooth and sets angle to 180 degrees for selected objects"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod
-    def poll(cls, context):
-        return (context.object is not None)
-    
-    def execute(self, context):
-        for obj in context.selected_objects:
-            if obj.type == 'MESH':
-                obj.data.use_auto_smooth = 1
-                obj.data.auto_smooth_angle = 3.14159
-                for p in obj.data.polygons:
-                    p.use_smooth = 1
-                        
-        return {'FINISHED'}
-classlist.append(DMR_OP_QuickAutoSmooth)
-
-# =============================================================================
-
-class DMR_OP_ToggleMirror(bpy.types.Operator):
-    bl_label = "Toggle Mirror Modifier"
-    bl_idname = 'dmr.toggle_mirror_modifier'
-    bl_description = "Toggles viewport visibility for all mirror modifiers"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod
-    def poll(cls, context):
-        return (context.object is not None)
-    
-    def execute(self, context):
-        for obj in bpy.data.objects:
-            if obj.hide_viewport:
-                continue
-            if obj.type == 'MESH':
-                if obj.modifiers:
-                    for m in obj.modifiers:
-                        if m.type == 'MIRROR':
-                            m.show_viewport = not m.show_viewport
-                    
-                        
-        return {'FINISHED'}
-classlist.append(DMR_OP_ToggleMirror)
 
 # =============================================================================
 
@@ -238,30 +132,6 @@ classlist.append(DMR_OP_RenameNodeOutput)
 
 # =============================================================================
 
-class DMR_OP_ToggleSubSurfOptimalDisplay(bpy.types.Operator):
-    bl_label = "Toggle Optimal Display"
-    bl_idname = 'dmr.toggle_sss_optimal_display'
-    bl_description = "Toggles optimal display for objects"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod
-    def poll(cls, context):
-        return (context.object is not None)
-    
-    def execute(self, context):
-        for obj in bpy.data.objects:
-            if obj.hide_viewport:
-                continue
-            if obj.type == 'MESH':
-                if obj.modifiers:
-                    for m in obj.modifiers:
-                        if m.type == 'SUBSURF':
-                            m.show_only_control_edges = not m.show_only_control_edges
-        return {'FINISHED'}
-classlist.append(DMR_OP_ToggleSubSurfOptimalDisplay)
-
-# =============================================================================
-
 class DMR_OP_FixFileOutputNames(bpy.types.Operator):
     bl_label = "Fix Filename Output"
     bl_idname = 'dmr.fix_filename_output'
@@ -289,6 +159,45 @@ class DMR_OP_FixFileOutputNames(bpy.types.Operator):
                         os.rename(fpath, newpath)
         return {'FINISHED'}
 classlist.append(DMR_OP_FixFileOutputNames)
+
+# =============================================================================
+
+class DMR_OP_SetEdgeCrease(bpy.types.Operator):
+    bl_label = "Set Crease"
+    bl_idname = 'dmr.set_crease'
+    bl_description = "Sets edge crease value for selected edges"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    crease : bpy.props.FloatProperty(
+        name="Crease",
+        description='Value to set crease to',
+        min=-0.0,
+        max=1.0, 
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return (context.object is not None and
+                context.object.type == 'MESH' and
+                context.object.data.is_editmode)
+
+    def execute(self, context):
+        crease = self.crease
+        context = bpy.context
+        objs = [o for o in context.selected_objects if o.type == 'MESH']
+        
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        for obj in objs:
+            edges = [e for e in obj.data.edges if e.select]
+            for e in edges:
+                e.crease = crease
+        
+        bpy.ops.object.mode_set(mode = lastobjectmode)
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_SetEdgeCrease)
 
 # =============================================================================
 

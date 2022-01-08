@@ -1,5 +1,5 @@
 bl_info = {
-    'name': 'Dmr Blender',
+    'name': 'DmrBlender Tools',
     'description': 'A collection of operators and panels to speed up efficiency in Blender.',
     'author': 'Dreamer13sq',
     'version': (1, 0),
@@ -7,7 +7,7 @@ bl_info = {
     'category': 'All',
     'version': (0, 1),
     'support': 'COMMUNITY',
-    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools'
+    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki'
 }
 
 # can use importlib.reload here instead 
@@ -19,19 +19,17 @@ modulesNames = [
     'dmr_hotmenu',
     
     'dmr_misc_op',
-    'dmr_pose_op',
+    'dmr_armature_op',
     'dmr_sculpt_op',
     'dmr_shapekey_op',
     'dmr_vcolor_op',
-    'dmr_vertex_op',
     'dmr_vgroup_op',
-    'dmr_action_op',
+    'dmr_object_op',
     
-    'dmr_pose_panel',
+    'dmr_armature_panel',
     'dmr_shapekey_panel',
     'dmr_vcolor_panel',
     'dmr_vgroup_panel',
-    'dmr_action_panel',
 ]
 
 import sys
@@ -63,7 +61,7 @@ def register():
                 sys.modules[currentModuleName].register()
  
 def unregister():
-    for currentModuleName in reversed(modulesFullNames.values()[:]):
+    for currentModuleName in reversed(modulesFullNames.values()):
         if currentModuleName in sys.modules:
             if hasattr(sys.modules[currentModuleName], 'unregister'):
                 sys.modules[currentModuleName].unregister()
