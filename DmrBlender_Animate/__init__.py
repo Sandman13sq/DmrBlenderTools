@@ -3,39 +3,55 @@ bl_info = {
     'author': 'Dreamer13sq',
     'category': 'All',
     'version': (0, 1),
-    'blender': (2, 90, 0)
+    'blender': (3, 0, 0)
 }
 
-if "bpy" in locals():
-    import importlib
-    importlib.reload(dmr_animate_op)
-    importlib.reload(dmr_animate_panel)
-
 import bpy
-from . import dmr_animate_op
-from . import dmr_animate_panel
 
-classlist = (
-    dmr_animate_op.DMRANIM_OP_SetUpVCLayers,
-    dmr_animate_op.DMRANIM_OP_MakeControl,
-    dmr_animate_op.DMRANIM_OP_QuickOutline,
-    dmr_animate_op.DMRANIM_OP_RemoveOutline,
-    dmr_animate_op.DMRANIM_OP_ToggleAlt,
-    dmr_animate_op.DMRANIM_OP_SetMaterialOutputByName,
+modulesNames = [
+    'utilities',
+    'dmr_hotmenu',
     
-    dmr_animate_panel.DMR_PT_VCMaterialPanel,
-)
+    'dmr_op_action',
+    'dmr_op_animate',
+    
+    'dmr_panel_action',
+    'dmr_panel_animate',
+]
+
+import sys
+import importlib
+
+print('> Loading %s...' % bl_info['name'])
+ 
+modulesFullNames = {}
+for currentModuleName in modulesNames:
+    if 'DEBUG_MODE' in sys.argv:
+        modulesFullNames[currentModuleName] = ('{}'.format(currentModuleName))
+    else:
+        modulesFullNames[currentModuleName] = ('{}.{}'.format(__name__, currentModuleName))
+
+for i in [0, 0]:
+    for currentModuleFullName in modulesFullNames.values():
+        if currentModuleFullName in sys.modules:
+            importlib.reload(sys.modules[currentModuleFullName])
+        else:
+            globals()[currentModuleFullName] = importlib.import_module(currentModuleFullName)
+            setattr(globals()[currentModuleFullName], 'modulesNames', modulesFullNames)
+
+# =============================================================================
 
 def register():
-    print('> Loading DmrAnimate...')
-    
-    for c in classlist:
-        bpy.utils.register_class(c)
-
+    for currentModuleName in modulesFullNames.values():
+        if currentModuleName in sys.modules:
+            if hasattr(sys.modules[currentModuleName], 'register'):
+                sys.modules[currentModuleName].register()
+ 
 def unregister():
-    for c in reversed(classlist):
-        bpy.utils.unregister_class(c)
-
+    for currentModuleName in reversed(modulesFullNames.values()):
+        if currentModuleName in sys.modules:
+            if hasattr(sys.modules[currentModuleName], 'unregister'):
+                sys.modules[currentModuleName].unregister()
+ 
 if __name__ == "__main__":
     register()
-

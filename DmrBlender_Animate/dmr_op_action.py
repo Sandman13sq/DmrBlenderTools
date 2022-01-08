@@ -1,5 +1,11 @@
 import bpy
 
+def GetActionItems(self, context):
+    return [('0', '-', '')] + [
+        (a.name, a.name, a.name)
+        for i, a in enumerate(bpy.data.actions)
+        ];
+
 classlist = [];
 
 # =============================================================================
@@ -34,11 +40,17 @@ class DMR_OP_ActionWriteFrameRange(bpy.types.Operator):
     bl_description = 'Saves frame range in action custom properties';
     bl_options = {'REGISTER', 'UNDO'}
     
+    @classmethod
+    def poll(self, context):
+        o = context.object
+        return o and o.animation_data and o.animation_data.action
+    
     def execute(self, context):
         scene = context.scene
         action = context.object.animation_data.action
-        action["frame_start"] = scene.frame_start
-        action["frame_end"] = scene.frame_end
+        action.frame_start = scene.frame_start
+        action.frame_end = scene.frame_end
+        action.fps = scene.render.fps
         return {'FINISHED'}
 
 classlist.append(DMR_OP_ActionWriteFrameRange);
@@ -51,11 +63,17 @@ class DMR_OP_ActionRestoreFrameRange(bpy.types.Operator):
     bl_description = 'Applies frame range stored in action';
     bl_options = {'REGISTER', 'UNDO'}
     
+    @classmethod
+    def poll(self, context):
+        o = context.object
+        return o and o.animation_data and o.animation_data.action
+    
     def execute(self, context):
         scene = context.scene
         action = context.object.animation_data.action
-        scene.frame_start = action['frame_start']
-        scene.frame_end = action['frame_end']
+        scene.frame_start = action.frame_start
+        scene.frame_end = action.frame_end
+        scene.render.fps = action.fps
         return {'FINISHED'}
 
 classlist.append(DMR_OP_ActionRestoreFrameRange);
@@ -81,6 +99,36 @@ class DMR_OP_ObjectSyncAction(bpy.types.Operator):
         return {'FINISHED'}
 
 classlist.append(DMR_OP_ObjectSyncAction);
+
+# =============================================================================
+
+class DMR_OP_SelectAction(bpy.types.Operator):
+    bl_label = "Select Action"
+    bl_idname = 'dmr.select_action'
+    bl_description = 'Sets action of all objects to match active';
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    actionname: bpy.props.EnumProperty(
+        name="Batch Export",
+        description="Export selected objects as separate files.",
+        items = GetActionItems,
+        default=0
+    )
+    
+    def execute(self, context):
+        action = bpy.data.actions[self.actionname]
+        
+        if action:
+            for obj in [x for x in bpy.data.objects if x.type in {'MESH', 'ARMATURE', 'EMPTY'}]:
+                try:
+                    obj.animation_data.action = action;
+                except:
+                    continue
+            bpy.ops.dmr.frame_range_restore()
+            
+        return {'FINISHED'}
+
+classlist.append(DMR_OP_SelectAction);
 
 # =============================================================================
 

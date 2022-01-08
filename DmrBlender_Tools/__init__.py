@@ -18,18 +18,19 @@ modulesNames = [
     'utilities',
     'dmr_hotmenu',
     
-    'dmr_misc_op',
-    'dmr_armature_op',
-    'dmr_sculpt_op',
-    'dmr_shapekey_op',
-    'dmr_vcolor_op',
-    'dmr_vgroup_op',
-    'dmr_object_op',
+    'dmr_op_misc',
+    'dmr_op_armature',
+    'dmr_op_sculpt',
+    'dmr_op_shapekey',
+    'dmr_op_vcolor',
+    'dmr_op_vgroup',
+    'dmr_op_object',
+    'dmr_op_pose',
     
-    'dmr_armature_panel',
-    'dmr_shapekey_panel',
-    'dmr_vcolor_panel',
-    'dmr_vgroup_panel',
+    'dmr_panel_armature',
+    'dmr_panel_shapekey',
+    'dmr_panel_vcolor',
+    'dmr_panel_vgroup',
 ]
 
 import sys
