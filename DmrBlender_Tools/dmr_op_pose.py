@@ -81,6 +81,10 @@ class DMR_OP_PoseApply(bpy.types.Operator):
     bl_description = 'Applies pose in pose library to current armature pose'
     bl_options = {'REGISTER', 'UNDO'}
     
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
+    
     def execute(self, context):
         lastmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT')
@@ -143,9 +147,12 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
         description='Replace pose for all bones'
         )
     
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
+    
     def execute(self, context):
         lastmode = bpy.context.active_object.mode
-        bpy.ops.object.mode_set(mode = 'OBJECT')
         
         oldactive = context.active_object
         armobj = SearchArmature(context.object)
@@ -153,8 +160,6 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
         poselib = armobj.pose_library
         poseindex = poselib.pose_markers.active_index
         marker = poselib.pose_markers[poseindex]
-        
-        bpy.ops.object.mode_set(mode = 'POSE')
         
         for obj in context.selected_objects:
             if obj.type != 'ARMATURE':
@@ -176,7 +181,7 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
                 for b in selected: 
                     b.select = True
                 for b in hidden: 
-                    b.hide = False
+                    b.hide = True
             # Selected Only
             else:
                 bpy.ops.poselib.pose_add(frame = marker.frame, name = marker.name)
@@ -197,14 +202,9 @@ class DMR_OP_PoseBoneToView(bpy.types.Operator):
     bl_description = "Sets Pose bone's location and rotation to Viewport's"
     bl_options = {'REGISTER', 'UNDO'}
 
-    @classmethod 
+    @classmethod
     def poll(self, context):
-        active = context.active_object
-        if active:
-            if active.type == 'ARMATURE':
-                if active.mode == 'EDIT' or active.mode == 'POSE':
-                    return 1
-        return None
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
         depsgraph = context.evaluated_depsgraph_get()
@@ -246,10 +246,8 @@ class DMR_OP_BoneSelectMore(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
-    def poll(cls, context):
-        return (context.object is not None and
-               context.object.type == 'ARMATURE' and
-               context.object.mode == 'POSE')
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
         active = bpy.context.view_layer.objects.active
@@ -269,17 +267,14 @@ classlist.append(DMR_OP_BoneSelectMore)
 # =============================================================================
 
 class DMR_OP_BoneSelectMoreParent(bpy.types.Operator):
-    """Tooltip"""
     bl_label = "Select More Parent Bones"
     bl_idname = 'dmr.bone_select_more_parent'
     bl_description = "Selects more connected parent bones"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
-    def poll(cls, context):
-        return (context.object is not None and
-               context.object.type == 'ARMATURE' and
-               context.object.mode == 'POSE')
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
         active = bpy.context.view_layer.objects.active
@@ -307,10 +302,8 @@ class DMR_OP_BoneSelectLess(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
-    def poll(cls, context):
-        return (context.object is not None and
-               context.object.type == 'ARMATURE' and
-               context.object.mode == 'POSE')
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
         def FindEndofChain(b):
@@ -345,10 +338,8 @@ class DMR_OP_BoneSelectLessParent(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
-    def poll(cls, context):
-        return (context.object is not None and
-               context.object.type == 'ARMATURE' and
-               context.object.mode == 'POSE')
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
         active = bpy.context.view_layer.objects.active
@@ -383,10 +374,8 @@ class DMR_OP_BoneGroupIsolate(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
-    def poll(cls, context):
-        return (context.object is not None and
-               context.object.type == 'ARMATURE' and
-               context.object.mode == 'POSE')
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
         active = bpy.context.view_layer.objects.active
