@@ -1,22 +1,23 @@
 bl_info = {
-    'name': 'Dmr GameMaker Studio VB Export',
+    'name': 'DmrBlender VBX Export',
     'category': 'Import-Export',
     'version': (0, 1),
-    'blender': (2, 9, 0)
+    'blender': (3, 0, 0)
 }
  
 modulesNames = [
     'utilities',
-    'dmr_gm_func_vb',
-    'dmr_gm_op_vb',
-    'dmr_gm_op_pose',
-    'dmr_gm_panel',
+    'vbx_func',
+    'vbx_presets',
+    'vbx_op',
+    'vbx_op_action',
+    'vbx_panel',
     ]
  
 import sys
 import importlib
 
-print('> Loading %s...' % bl_info['name']);
+print('> Loading %s...' % bl_info['name'])
  
 modulesFullNames = {}
 for currentModuleName in modulesNames:
@@ -32,16 +33,17 @@ for i in [0, 0]:
         else:
             globals()[currentModuleFullName] = importlib.import_module(currentModuleFullName)
             setattr(globals()[currentModuleFullName], 'modulesNames', modulesFullNames)
- 
+
+# =============================================================================
+
 def register():
     for currentModuleName in modulesFullNames.values():
         if currentModuleName in sys.modules:
             if hasattr(sys.modules[currentModuleName], 'register'):
                 sys.modules[currentModuleName].register()
-                print(currentModuleName)
  
 def unregister():
-    for currentModuleName in modulesFullNames.values():
+    for currentModuleName in reversed(modulesFullNames.values()):
         if currentModuleName in sys.modules:
             if hasattr(sys.modules[currentModuleName], 'unregister'):
                 sys.modules[currentModuleName].unregister()

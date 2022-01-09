@@ -81,15 +81,9 @@ class DMR_OP_PoseApply(bpy.types.Operator):
     bl_description = 'Applies pose in pose library to current armature pose'
     bl_options = {'REGISTER', 'UNDO'}
     
-    @classmethod
-    def poll(self, context):
-        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
-    
     def execute(self, context):
-        lastmode = bpy.context.active_object.mode
-        bpy.ops.object.mode_set(mode = 'OBJECT')
-        
         oldactive = context.active_object
+        lastmode = oldactive.mode
         
         target = SearchArmature(oldactive)
         
@@ -100,21 +94,17 @@ class DMR_OP_PoseApply(bpy.types.Operator):
         for obj in context.selected_objects[:] + [target]:
             if obj.type != 'ARMATURE':
                 continue
-            print(obj.name)
+            
             targethidden = obj.hide_get()
             obj.hide_set(False)
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.mode_set(mode = 'POSE')
             
             bones = obj.data.bones
-            selected = []
-            hidden = []
-            for b in bones:
-                if b.hide:
-                    hidden.append(b)
-                    b.hide = False
-                if b.select:
-                    selected.append(b)
+            selected = [b for b in bones if b.select]
+            hidden = [b for b in bones if b.hide]
+            for b in hidden:
+                b.hide = False
             
             bpy.ops.pose.select_all(action='SELECT')
             bpy.ops.poselib.apply_pose(pose_index=poseindex)
@@ -126,8 +116,8 @@ class DMR_OP_PoseApply(bpy.types.Operator):
                 b.hide = True
             target.hide_set(targethidden)
         
-        bpy.ops.object.mode_set(mode = lastmode)
         bpy.context.view_layer.objects.active = oldactive
+        bpy.ops.object.mode_set(mode = lastmode)
         
         self.report({'INFO'}, 'Pose read from "%s"' % marker.name)
         
@@ -147,13 +137,7 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
         description='Replace pose for all bones'
         )
     
-    @classmethod
-    def poll(self, context):
-        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
-    
     def execute(self, context):
-        lastmode = bpy.context.active_object.mode
-        
         oldactive = context.active_object
         armobj = SearchArmature(context.object)
         bpy.context.view_layer.objects.active = armobj
@@ -187,8 +171,6 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
                 bpy.ops.poselib.pose_add(frame = marker.frame, name = marker.name)
         
         poselib.pose_markers.active_index = poseindex
-        bpy.ops.object.mode_set(mode = lastmode)
-        bpy.context.view_layer.objects.active = oldactive
         self.report({'INFO'}, 'Pose written to "%s"' % marker.name)
         
         return {'FINISHED'}
