@@ -3,18 +3,8 @@ import sys
 
 classlist = []
 
-def SearchArmature(startingobject):
-    o = startingobject
-    if o:
-        if o.type == 'ARMATURE':
-            return o
-        if o.parent and o.parent.type == 'ARMATURE':
-            return o.parent
-        try:
-            return [m for m in o.modifiers if (m.type == 'ARMATURE' and m.object)][-1].object
-        except:
-            return None
-    return None
+def SearchArmature(obj):
+    return (obj if obj.type == 'ARMATURE' else obj.find_armature()) if obj else None
 
 # =============================================================================
 
