@@ -1,14 +1,14 @@
 # DmrBlenderTools
  Addon(s) for Blender to speed up efficiency.
 
-## [DmrBlender](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Tools)
+## [DmrBlender_Tools](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Tools)
 A collection of tools to speed up efficiency in Blender.  
 
-## [DmrBlenderVBX](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_VBX)
+## [DmrBlender_VBX](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_VBX)
 Exporter for a **.vb** and **.vbx** format to read in from Game Maker Studio 2.  
-See its partner repo [DmrVBX](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_VBX) (not ready yet).
+See its partner repo [DmrVBX](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrVBX) (not ready yet).
 
-## [DmrAnimate](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Animate)
+## [DmrBlender_Animate](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Animate)
 Tools for animations and action handling.
 
 ## Standalones
