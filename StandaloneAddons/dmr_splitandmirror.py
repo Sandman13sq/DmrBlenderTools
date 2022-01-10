@@ -7,7 +7,7 @@ bl_info = {
     'category': 'Mesh',
     'version': (0, 1),
     'support': 'COMMUNITY',
-    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki'
+    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Split-And-Mirror'
 }
 
 import bpy
