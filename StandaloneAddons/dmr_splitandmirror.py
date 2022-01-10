@@ -4,7 +4,7 @@ bl_info = {
     'author': 'Dreamer13sq',
     'version': (1, 0),
     'blender': (3, 0, 0),
-    'category': 'All',
+    'category': 'Mesh',
     'version': (0, 1),
     'support': 'COMMUNITY',
     'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki'
