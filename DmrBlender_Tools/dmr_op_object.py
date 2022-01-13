@@ -107,6 +107,31 @@ classlist.append(DMR_OP_ToggleMirror)
 
 # =============================================================================
 
+class DMR_OP_SyncActiveMaterial(bpy.types.Operator):
+    bl_label = "Sync Active Material"
+    bl_idname = 'dmr.sync_active_material'
+    bl_description = "Sets active material for all selected objects to the active material of the active object"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.active_object is not None)
+    
+    def execute(self, context):
+        if context.active_object.material_slots:
+            activemat = context.active_object.active_material
+            print(activemat)
+            for obj in context.selected_objects:
+                try:
+                    obj.active_material = activemat
+                except:
+                    continue
+                        
+        return {'FINISHED'}
+classlist.append(DMR_OP_SyncActiveMaterial)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
