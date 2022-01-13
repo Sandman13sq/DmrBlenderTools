@@ -454,6 +454,9 @@ class DMR_OP_VertexColorMove(bpy.types.Operator):
             self.report({'WARNING'}, 'No vertex color data found')
             return {'FINISHED'}
         
+        lastmode = object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
         GetLyrData = lambda x: {i: tuple(vc.color[:]) for i, vc in enumerate(x.data)}
         
         vcactive = vclayers.active
@@ -501,6 +504,8 @@ class DMR_OP_VertexColorMove(bpy.types.Operator):
                     vclyr.active_render = True
                     break
             vclayers.active = vclayers[vcname]
+        
+        bpy.ops.object.mode_set(mode=lastmode)
             
         return {'FINISHED'}
 bpy.utils.register_class(DMR_OP_VertexColorMove)
