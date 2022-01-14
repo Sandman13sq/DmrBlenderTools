@@ -92,8 +92,8 @@ class DMR_PT_ActionProperties(bpy.types.Panel): # ------------------------------
                 row.prop(scene, "frame_end", text='End*')
             
             row = layout.row(align=0)
-            row.operator('dmr.frame_range_store', text='Save')
-            row.operator('dmr.frame_range_restore', text='Restore')
+            row.operator('dmr.frame_range_store', text='Save').action = action.name
+            row.operator('dmr.frame_range_restore', text='Restore').action = action.name
 classlist.append(DMR_PT_ActionProperties)
 
 class DMR_PT_ActionProperties_Graph(DMR_PT_ActionProperties, bpy.types.Panel): # ------------------------------

@@ -40,19 +40,19 @@ class DMR_OP_ActionWriteFrameRange(bpy.types.Operator):
     bl_description = 'Saves frame range in action custom properties';
     bl_options = {'REGISTER', 'UNDO'}
     
-    @classmethod
-    def poll(self, context):
-        o = context.object
-        return o and o.animation_data and o.animation_data.action
+    action : bpy.props.EnumProperty(
+        name='Action', items=GetActionItems, default=0,
+        description='Action to restore data from'
+        )
     
     def execute(self, context):
-        scene = context.scene
-        action = context.object.animation_data.action
-        action.frame_start = scene.frame_start
-        action.frame_end = scene.frame_end
-        action.fps = scene.render.fps
+        if self.action in bpy.data.actions:
+            action = bpy.data.actions[self.action]
+            scene = context.scene
+            action.frame_start = scene.frame_start
+            action.frame_end = scene.frame_end
+            action.fps = scene.render.fps
         return {'FINISHED'}
-
 classlist.append(DMR_OP_ActionWriteFrameRange);
 
 # =============================================================================
@@ -63,19 +63,19 @@ class DMR_OP_ActionRestoreFrameRange(bpy.types.Operator):
     bl_description = 'Applies frame range stored in action';
     bl_options = {'REGISTER', 'UNDO'}
     
-    @classmethod
-    def poll(self, context):
-        o = context.object
-        return o and o.animation_data and o.animation_data.action
+    action : bpy.props.EnumProperty(
+        name='Action', items=GetActionItems, default=0,
+        description='Action to restore data from'
+        )
     
     def execute(self, context):
-        scene = context.scene
-        action = context.object.animation_data.action
-        scene.frame_start = action.frame_start
-        scene.frame_end = action.frame_end
-        scene.render.fps = action.fps
+        if self.action in bpy.data.actions:
+            action = bpy.data.actions[self.action]
+            scene = context.scene
+            scene.frame_start = action.frame_start
+            scene.frame_end = action.frame_end
+            scene.render.fps = action.fps
         return {'FINISHED'}
-
 classlist.append(DMR_OP_ActionRestoreFrameRange);
 
 # =============================================================================
@@ -124,7 +124,7 @@ class DMR_OP_SelectAction(bpy.types.Operator):
                     obj.animation_data.action = action;
                 except:
                     continue
-            bpy.ops.dmr.frame_range_restore()
+            bpy.ops.dmr.frame_range_restore(action=action.name)
             
         return {'FINISHED'}
 
