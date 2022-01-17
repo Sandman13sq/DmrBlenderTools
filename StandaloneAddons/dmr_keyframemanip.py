@@ -1,4 +1,13 @@
 import bpy
+import random
+
+def GetChainRoot(b):
+    return GetChainRoot(b.parent) if (b.parent and b.parent.select and b.use_connect) else b
+def GetBoneChain(b):
+    for c in b.children:
+        if c.select:
+            return [b] + GetBoneChain(c)
+    return [b]
 
 classlist = []
 
@@ -27,11 +36,6 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         pbones = obj.pose.bones
         
         obj.update_from_editmode()
-        
-        def GetChainRoot(b):
-            return GetChainRoot(b) if (b.parent and b.parent.select and b.use_connect) else b
-        def GetBoneChain(b):
-            return ([b] + GetBoneChain(b.children[0])) if (b.children and b.children[0].select) else [b]
         
         chains = [
             [bones[b.name] for b in c.bones if bones[b.name].select]
@@ -76,13 +80,106 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
                 fcurves = fcurvemap[b.name]
                 
                 for fc in fcurves:
-                    if not fc.hide:
+                    if not fc.hide and not fc.lock:
                         for k in fc.keyframe_points:
                             if k.select_control_point:
                                 k.co_ui[0] += channelshift*chainindex + chainpos*posshift
         
         return {'FINISHED'}
 classlist.append(DMR_OP_KeyframeManip_Wave)
+
+# =============================================================================
+
+class DMR_OP_KeyframeManip_RandomFrame(bpy.types.Operator):
+    bl_label = "Key Manip - Random Frame"
+    bl_idname = 'dmr.keyframe_manip_random_frame'
+    bl_description = 'Offsets selected keyframe positions randomly';
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    seed: bpy.props.IntProperty(
+        name="Random Seed", default=0,
+        description="Seed to use for suffling keyframe positions",
+    )
+    
+    strength: bpy.props.FloatProperty(
+        name='Strength', default=3.0,
+        description='Amount to move keyframes'
+    )
+    
+    split_channel_index: bpy.props.BoolProperty(
+        name='Split Channel Index', default=False,
+        description='Calculate different values per channel index'
+    )
+    
+    ignore_end_keyframes: bpy.props.BoolProperty(
+        name='Ignore End Keyframes', default=True,
+        description='Skips starting and ending keyframes of channels'
+    )
+    
+    snap_positions: bpy.props.BoolProperty(
+        name='Snap Positions', default=True,
+        description='Round new positions to nearest whole number'
+    )
+    
+    def execute(self, context):
+        # Settings
+        strength = self.strength
+        doround = self.snap_positions
+        dosplit = self.split_channel_index
+        skipends = self.ignore_end_keyframes
+        
+        random.seed(self.seed)
+        
+        obj = context.object
+        armature = obj.data
+        bones = obj.data.bones
+        
+        obj.update_from_editmode()
+        
+        action = obj.animation_data.action
+        selectedbonenames = [b.name for b in bones if b.select]
+        groupedcurves = {}
+        
+        # Group curves by datapath
+        for fc in action.fcurves:
+            if not fc.hide and not fc.lock:
+                dp = fc.data_path
+                name = dp[dp.find('"')+1:dp.rfind('"')]
+                if name in selectedbonenames:
+                    if dp not in groupedcurves:
+                        groupedcurves[dp] = []
+                    groupedcurves[dp].append(fc)
+        
+        # Consistent Channel indices
+        if not dosplit:
+            for dp, g in groupedcurves.items():
+                rmap = {}
+                for fc in g:
+                    kend = len(fc.keyframe_points)-1
+                    for i, k in enumerate(fc.keyframe_points):
+                        if skipends and (i == 0 or i == kend):
+                            continue
+                        if k.select_control_point:
+                            if k.co[0] not in rmap:
+                                rmap[k.co[0]] = (random.random()*2.0-1.0)*strength
+                            k.co[0] += rmap[k.co[0]]
+                            if doround:
+                                k.co[0] = round(k.co[0])
+        # Split channel indices
+        else:
+            for fc in [x for g in groupedcurves.values() for x in g]:
+                kend = len(fc.keyframe_points)-1
+                for i, k in enumerate(fc.keyframe_points):
+                    if skipends and (i == 0 or i == kend):
+                        continue
+                    if k.select_control_point:
+                        r = (random.random()*2.0-1.0) * strength
+                        k.co[0] += r
+                        if doround:
+                            k.co[0] = round(k.co[0])
+                            
+        return {'FINISHED'}
+classlist.append(DMR_OP_KeyframeManip_RandomFrame)
 
 # =============================================================================
 
@@ -196,7 +293,8 @@ class DMR_OP_BoneChainFromSelection(bpy.types.Operator):
     
     def execute(self, context):
         def GetChainRoot(b):
-            return GetChainRoot(b) if (b.parent and b.use_connect) else b
+            print(b.name)
+            return GetChainRoot(b.parent) if (b.parent and b.use_connect) else b
         def GetBoneChain(b):
             return ([b] + GetBoneChain(b.children[0])) if b.children else [b]
         
@@ -272,7 +370,7 @@ class DMR_PT_BoneChains(bpy.types.Panel):
         
         if activechain:
             row = box.row()
-            row.template_list("OBJECT_UL_BoneChainBones", "", activechain, "bones", ob, "bone_chains_bone_index", rows=5)
+            row.template_list("OBJECT_UL_BoneChainBones", "", activechain, "bones", armature, "bone_chains_bone_index", rows=5)
         
 classlist.append(DMR_PT_BoneChains)
 
@@ -303,17 +401,40 @@ class OBJECT_UL_BoneChainBones(bpy.types.UIList):
 classlist.append(OBJECT_UL_BoneChainBones)
 
 # =============================================================================
-print('='*100)
+
+class DMR_PT_KeyframeManip(bpy.types.Menu):
+    bl_label = "Keyframe Manip"
+
+    def draw(self, context):
+        layout = self.layout
+        
+        layout.operator("dmr.keyframe_manip_wave")
+        layout.operator("dmr.keyframe_manip_random_frame")
+#classlist.append(DMR_PT_KeyframeManip)
+
+def keymanip_menu(self, context):
+    layout = self.layout
+    layout.operator("dmr.keyframe_manip_wave")
+    layout.operator("dmr.keyframe_manip_random_frame")
+
+# =============================================================================
 
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
+    
+    try:
+        bpy.types.VIEW3D_MT_pose_context_menu.remove(keymanip_menu)
+    except:
+        bpy.types.VIEW3D_MT_pose_context_menu.prepend(keymanip_menu)
     
     bpy.types.Armature.bone_chains = bpy.props.CollectionProperty(type=BoneChain)
     bpy.types.Armature.bone_chains_index = bpy.props.IntProperty()
     bpy.types.Armature.bone_chains_bone_index = bpy.props.IntProperty()
     
 def unregister():
+    bpy.types.VIEW3D_MT_pose_context_menu.remove(keymanip_menu)
+    
     for c in reverse(classlist):
         bpy.utils.unregister_class(c)
     del bpy.types.Object.bone_chains
