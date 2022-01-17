@@ -14,4 +14,6 @@ Tools for animations and action handling.
 ## Standalones
 - [Split and Mirror](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender/SplitAndMirror)
     - Splits active mesh and adds a mirror modifier.  Selection takes into account vertices that overlap from one side to another.
-- [Keyframe Manip](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Animate) (not ready yet)
+- [Keyframe Manip](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender/KeyframeManip)
+    - Operators for editing keyframes to create specific effects.
+
