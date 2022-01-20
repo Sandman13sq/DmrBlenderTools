@@ -130,10 +130,10 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
     def execute(self, context):
         oldactive = context.active_object
         lastmode = oldactive.mode
-        bpy.ops.object.mode_set(mode = 'POSE')
         
         armobj = SearchArmature(context.object)
         context.view_layer.objects.active = armobj
+        bpy.ops.object.mode_set(mode = 'POSE')
         poselib = armobj.pose_library
         poseindex = poselib.pose_markers.active_index
         marker = poselib.pose_markers[poseindex]
@@ -164,8 +164,10 @@ class DMR_OP_PoseReplace(bpy.types.Operator):
                 bpy.ops.poselib.pose_add(frame = marker.frame, name = marker.name)
         
         bpy.ops.object.mode_set(mode=lastmode)
+        context.view_layer.objects.active = oldactive
         
         poselib.pose_markers.active_index = poseindex
+        
         self.report({'INFO'}, 'Pose written to "%s"' % marker.name)
         
         return {'FINISHED'}

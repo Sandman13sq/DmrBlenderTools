@@ -8,10 +8,10 @@ def SearchArmature(obj):
 
 # =============================================================================
 
-class DMR_OP_FixRightBoneNames(bpy.types.Operator):
-    bl_label = "Fix Right Bone Names"
-    bl_idname = 'dmr.fix_right_bone_names'
-    bl_description = "Corrects newly created right side bones' names to their left counterpart"
+class DMR_OP_FixMirroredBoneNames(bpy.types.Operator):
+    bl_label = "Fix Mirrored Bone Names"
+    bl_idname = 'dmr.fix_mirrored_bone_names'
+    bl_description = "Corrects selected bones' names to their mirrored counterpart based on location"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
@@ -20,31 +20,72 @@ class DMR_OP_FixRightBoneNames(bpy.types.Operator):
                 context.object.type == 'ARMATURE')
     
     def execute(self, context):
-        active = bpy.context.view_layer.objects.active
-        if active:
-            lastobjectmode = bpy.context.active_object.mode
-            bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        def Dist(v1, v2):
+            vv = (v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2])
+            return vv[0]*vv[0]+vv[1]*vv[1]+vv[2]*vv[2]
+        def FixName(n):
+            if n[-2] == '.' or n[-2] == '_' or n[-2] == '-':
+                if n[-1] == 'l':
+                    return n[:-1]+'r'
+                if n[-1] == 'r':
+                    return n[:-1]+'l'
+                if n[-1] == 'L':
+                    return n[:-1]+'R'
+                if n[-1] == 'R':
+                    return n[:-1]+'L'
+        
+        obj = context.object
+        obj.update_from_editmode()
+        
+        bones = obj.data.bones
+        selbones = [b for b in bones if b.select]
+        
+        thresh = 0.1
+        
+        # Check selected bones
+        for b in selbones:
+            bhead = b.head_local
+            btail = b.tail_local
+            bhead = (-bhead[0], bhead[1], bhead[2])
+            btail = (-btail[0], btail[1], btail[2])
             
-            bones = active.data.bones
-            thresh = 0.01
-            leftbones = [b for b in bones if b.head_local[0] >= thresh]
-            rightbones = [b for b in bones if b.head_local[0] <= -thresh]
-            for b in rightbones:
-                loc = b.head_local.copy()
-                loc[0] *= -1
-                currdist = 100
-                currbone = None
-                for b2 in leftbones:
-                    b2dist = (b2.head_local - loc).length
-                    if b2dist < currdist:
-                        currbone = b2
-                        currdist = b2dist
-                if currbone != None:
-                    b.name = currbone.name[:-1] + 'r'
-            bpy.ops.object.mode_set(mode = lastobjectmode)
+            htarget = None
+            ttarget = None
+            hdist = thresh
+            tdist = thresh
+            
+            if (bhead[0]*bhead[0]) <= 0.001 and (btail[0]*btail[0]) <= 0.001:
+                continue
+            
+            # Test bone against other bones
+            for b2 in bones:
+                if b2 == b:
+                    continue
+                hd = Dist(bhead, b2.head_local)
+                td = Dist(btail, b2.tail_local)
+                
+                if hd <= hdist:
+                    htarget = b2
+                    hdist = hd
+                if td <= tdist:
+                    ttarget = b2
+                    tdist = td
+            
+            # Hits for both head and tail
+            if htarget and ttarget:
+                if htarget != ttarget: # Head and tail are not equal
+                    #print(b.name, [ttarget.name], FixName(ttarget.name))
+                    n = FixName(ttarget.name)
+                    if n:
+                        b.name = n
+                else:
+                    #print(b.name, [htarget.name, ttarget.name], FixName(htarget.name))
+                    n = FixName(htarget.name)
+                    if n:
+                        b.name = n
                         
         return {'FINISHED'}
-classlist.append(DMR_OP_FixRightBoneNames)
+classlist.append(DMR_OP_FixMirroredBoneNames)
 
 # =============================================================================
 
