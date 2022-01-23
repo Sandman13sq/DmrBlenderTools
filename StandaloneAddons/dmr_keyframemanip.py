@@ -30,14 +30,14 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
     bl_description = 'Offsets Keyframes by order of bone chain';
     bl_options = {'REGISTER', 'UNDO'}
     
-    channelshift: bpy.props.IntProperty(
+    channel_shift: bpy.props.IntProperty(
         name="Channel Shift", default=1,
         description="Number of frames to shift by chain index",
     )
     
-    posshift: bpy.props.IntProperty(
+    position_shift: bpy.props.IntProperty(
         name="Position Shift", default=1,
-        description="Number of frames to shift down the chain",
+        description="Number of frames to shift by down the chain",
     )
     
     def execute(self, context):
@@ -80,8 +80,8 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
                 fcurvemap[name] = []
             fcurvemap[name].append(fc)
         
-        channelshift = self.channelshift
-        posshift = self.posshift
+        channel_shift = self.channel_shift
+        position_shift = self.position_shift
         
         for chainindex,chain in enumerate(chains):
             bonelink = [pbones[b.name] for b in chain]
@@ -94,7 +94,7 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
                     if not fc.hide and not fc.lock:
                         for k in fc.keyframe_points:
                             if k.select_control_point:
-                                k.co_ui[0] += channelshift*chainindex + chainpos*posshift
+                                k.co_ui[0] += channel_shift*chainindex + chainpos*position_shift
         
         return {'FINISHED'}
 classlist.append(DMR_OP_KeyframeManip_Wave)
@@ -109,7 +109,7 @@ class DMR_OP_KeyframeManip_RandomFrame(bpy.types.Operator):
     
     seed: bpy.props.IntProperty(
         name="Random Seed", default=0,
-        description="Seed to use for suffling keyframe positions",
+        description="Seed to use for shuffling keyframe positions",
     )
     
     strength: bpy.props.FloatProperty(
