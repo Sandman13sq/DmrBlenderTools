@@ -4,9 +4,6 @@
 ## [DmrBlender_Tools](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Tools)
 A collection of tools to speed up efficiency in Blender.  
 
-## [DmrBlender_Animate](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Animate)
-Tools for animations and action handling.
-
 ## [DmrBlender_VBM](https://github.com/Dreamer13sq/DmrVBM-blender-to-gms2)
 Addon to export vertex buffers to Game Maker Studio 2. (Separate repository)
 
