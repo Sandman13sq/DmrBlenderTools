@@ -4,16 +4,17 @@
 ## [DmrBlender_Tools](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Tools)
 A collection of tools to speed up efficiency in Blender.  
 
-## [DmrBlender_VBX](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_VBX)
-Exporter for a **.vb** and **.vbx** format to read in from Game Maker Studio 2.  
-See its partner repo [DmrVBX](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrVBX) (not ready yet).
-
 ## [DmrBlender_Animate](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender_Animate)
 Tools for animations and action handling.
 
+## [DmrBlender_VBM](https://github.com/Dreamer13sq/DmrVBM-blender-to-gms2)
+Addon to export vertex buffers to Game Maker Studio 2. (Separate repository)
+
 ## Standalones
-- [Split and Mirror](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender/SplitAndMirror)
+- [Split and Mirror](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Split-And-Mirror)
     - Splits active mesh and adds a mirror modifier.  Selection takes into account vertices that overlap from one side to another.
-- [Keyframe Manip](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/DmrBlender/KeyframeManip)
-    - Operators for editing keyframes to create specific effects.
+- [Keyframe Manip](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Keyframe-Manip)
+    - Operators to manipulate keyframes, such as offsetting bone keyframes to create a wave effect on a tail.
+- [Action Marker Panel](https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Action-Marker-Panel)
+    - Access action markers through panel in graph and dopesheet editors.
 
