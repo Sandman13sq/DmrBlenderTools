@@ -25,7 +25,7 @@ classlist = []
 # =============================================================================
 
 class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
-    bl_label = "Key Manip - Wave"
+    bl_label = "Keyframe Manip - Wave"
     bl_idname = 'dmr.keyframe_manip_wave'
     bl_description = 'Offsets Keyframes by order of bone chain';
     bl_options = {'REGISTER', 'UNDO'}
@@ -102,7 +102,7 @@ classlist.append(DMR_OP_KeyframeManip_Wave)
 # =============================================================================
 
 class DMR_OP_KeyframeManip_RandomFrame(bpy.types.Operator):
-    bl_label = "Key Manip - Random Frame"
+    bl_label = "Keyframe Manip - Random Frame"
     bl_idname = 'dmr.keyframe_manip_random_frame'
     bl_description = 'Offsets selected keyframe positions randomly';
     bl_options = {'REGISTER', 'UNDO'}
