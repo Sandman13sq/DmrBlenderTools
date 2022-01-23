@@ -1,11 +1,10 @@
 bl_info = {
-    'name': 'DmrBlender Split and Mirror',
+    'name': 'Split and Mirror',
     'description': 'Operator to split active mesh in half and create a quick mirror modifier.\nSelection takes into account vertices that overlap from one side to another',
     'author': 'Dreamer13sq',
     'version': (1, 0),
     'blender': (3, 0, 0),
     'category': 'Mesh',
-    'version': (0, 1),
     'support': 'COMMUNITY',
     'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Split-And-Mirror'
 }

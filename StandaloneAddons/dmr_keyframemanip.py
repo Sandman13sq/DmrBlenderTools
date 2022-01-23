@@ -1,3 +1,14 @@
+bl_info = {
+    'name': 'Keyframe Manip',
+    'description': 'Operators to manipulate keyframes, such as offsetting bone keyframes to create a wave effect on a tail.',
+    'author': 'Dreamer13sq',
+    'version': (1, 0),
+    'blender': (3, 0, 0),
+    'category': 'Animation',
+    'support': 'COMMUNITY',
+    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Keyframe-Manip'
+}
+
 import bpy
 import random
 
