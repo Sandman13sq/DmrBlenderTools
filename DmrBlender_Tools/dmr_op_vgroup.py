@@ -74,12 +74,14 @@ class DMR_OP_ClearWeights(bpy.types.Operator):
             lastobjectmode = bpy.context.active_object.mode
             bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
             
-            vertexGroups = selectedObject.vertex_groups
+            vertexgroups = selectedObject.vertex_groups
             
             # Remove Groups
             for v in selectedObject.data.vertices:
                 if v.select:
-                    utils.ClearVertexWeights(v, vertexGroups)
+                    for vge in v.groups:
+                        if not vertexgroups[vge.group].lock_weight:
+                            vertexgroups[vge.group].remove([v.index]);
                 
             bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
             
