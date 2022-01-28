@@ -55,6 +55,48 @@ class DMR_OP_SplitAndMirror(bpy.types.Operator):
         vertices = bm.verts
         polygons = bm.faces
         
+        islands = [] # List of lists of vertices
+        
+        # Find Loose Islands
+        for p in polygons:
+            pverts = list(p.verts)
+            hit = 0
+            for island in islands:
+                for v in pverts:
+                    if v in island:
+                        island += pverts
+                        hit = 1
+                        break
+                if hit:
+                    break
+            
+            if not hit:
+                newisland = pverts[:]
+                islands.append(newisland)
+        while 1:
+            hit = 0
+            for i1 in islands:
+                for i2 in islands:
+                    if i1 == i2:
+                        continue
+                    for v in i1:
+                        if v in i2:
+                            i1 += i2
+                            i2.clear()
+                            hit = 1
+            if not hit:
+                break
+        islands = [list(set(x)) for x in islands if len(x)]
+        def GetIslandCenter(island):
+            n = len(island)
+            return [
+                sum([v.co[0] for v in island])/n,
+                sum([v.co[1] for v in island])/n,
+                sum([v.co[2] for v in island])/n
+            ]
+        
+        islandmap = [(island, GetIslandCenter(island)) for island in islands]
+        
         # Deselect middle verts and right hand side verts
         middleverts = {v for v in vertices if v.co[0]*v.co[0] <= thresh*thresh}
         safeverts = {v for v in vertices if v.co[0] >= obj.dimensions[0]*0.1}
@@ -63,6 +105,7 @@ class DMR_OP_SplitAndMirror(bpy.types.Operator):
         for v in vertices:
             v.select_set(1)
         for v in middleverts:
+            v.co[0] = 0.0
             v.select_set(0)
         for v in safeverts:
             v.select_set(0)
@@ -75,6 +118,12 @@ class DMR_OP_SplitAndMirror(bpy.types.Operator):
             safeverts = [v for v in vertices]
             remainingpolys = []
             remainingverts = []
+        
+        # Deselect Right side islands
+        for island, center in islandmap:
+            print(center)
+            if center[0] > thresh:
+                [v.select_set(0) for v in island]
         
         # Step by polygon to deselect vertices between right hand side and middle verts
         def IterativeSelect(v):
