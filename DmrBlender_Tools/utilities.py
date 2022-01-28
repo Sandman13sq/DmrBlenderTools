@@ -4,7 +4,8 @@ import struct
 # Clear weights from vertex
 def ClearVertexWeights(v, vertexGroups):
     for vge in v.groups:
-        vertexGroups[vge.group].remove([v.index]);
+        if not vertexGroups[vge.group].lock:
+            vertexGroups[vge.group].remove([v.index]);
 
 # Set Vertex Weight. Creates groups where necessary
 def SetVertexWeight(v, weight_value, groupname, vertexGroups):
