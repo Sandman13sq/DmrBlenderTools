@@ -239,7 +239,7 @@ class DMR_UL_ActionMarkers(bpy.types.UIList):
         r = [r.row(align=1) for x in (0, 1, 2, 3)]
         r[0].scale_x = 0.3
         r[1].scale_x = 1
-        r[2].scale_x = 0.6
+        r[2].scale_x = 0.77
         
         r[0].label(text=' '+str(index))
         r[1].operator('dmr.set_scene_frame', text='', icon='PLAY', emboss=context.scene.frame_current!=item.frame).frame=item.frame
