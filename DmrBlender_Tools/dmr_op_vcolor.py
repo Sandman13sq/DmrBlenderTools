@@ -512,35 +512,6 @@ bpy.utils.register_class(DMR_OP_VertexColorMove)
 
 # =============================================================================
 
-class DMR_OP_SyncVCLayers(bpy.types.Operator):
-    bl_label = "Sync Vertex Color Layers by Name"
-    bl_idname = 'dmr.sync_vc_name'
-    bl_description = 'Matches active and selected vertex color layers of selected objects to active object by name'
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod 
-    def poll(self, context):
-        active = context.active_object
-        return active and active.type == 'MESH' and active.data.vertex_colors
-    
-    def execute(self, context):
-        active = context.active_object
-        selectname = active.data.vertex_colors.active.name
-        rendername = [x for x in active.data.vertex_colors if x.active_render][0].name
-        
-        for obj in context.selected_objects:
-            if obj.type == 'MESH' and obj.data.vertex_colors:
-                vcolors = obj.data.vertex_colors
-                if rendername in [x.name for x in vcolors]:
-                    vcolors[rendername].active_render = True
-                if selectname in [x.name for x in vcolors]:
-                    vcolors.active = vcolors[selectname]
-        
-        return {'FINISHED'}
-classlist.append(DMR_OP_SyncVCLayers)
-
-# =============================================================================
-
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
