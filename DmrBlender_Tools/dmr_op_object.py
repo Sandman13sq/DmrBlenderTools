@@ -190,6 +190,48 @@ classlist.append(DMR_OP_SyncVCLayers)
 
 # =============================================================================
 
+class DMR_OP_NewUVLayerForSelected(bpy.types.Operator):
+    bl_label = "Add UV Layer To Selected Objects"
+    bl_idname = 'dmr.new_uv_to_selected'
+    bl_description = 'Adds new UV layer to all selected objects'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    name : bpy.props.StringProperty(name='Layer Name')
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=200)
+    
+    def execute(self, context):
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                obj.data.uv_layers.new(name=self.name)
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_NewUVLayerForSelected)
+
+# =============================================================================
+
+class DMR_OP_NewVCLayerForSelected(bpy.types.Operator):
+    bl_label = "Add VC Layer To Selected Objects"
+    bl_idname = 'dmr.new_vc_to_selected'
+    bl_description = 'Adds new vertex color layer to all selected objects'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    name : bpy.props.StringProperty(name='Layer Name')
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=200)
+    
+    def execute(self, context):
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                obj.data.vertex_colors.new(name=self.name)
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_NewVCLayerForSelected)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
