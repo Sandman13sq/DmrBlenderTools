@@ -381,6 +381,41 @@ classlist.append(DMR_OP_BoneGroupIsolate)
 
 # =============================================================================
 
+class DMR_OP_BoneGroupHide(bpy.types.Operator):
+    bl_label = "Hide Bone Group"
+    bl_idname = 'dmr.bone_group_hide'
+    bl_description = "Hides all bones in bone group. Unhides if only those in group are hidden"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
+    
+    def execute(self, context):
+        active = bpy.context.view_layer.objects.active
+        if active:
+            lastobjectmode = bpy.context.active_object.mode
+            bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+            
+            bonegroup = active.pose.bone_groups.active
+            bones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group != bonegroup]
+            groupbones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group == bonegroup]
+            
+            # All hidden
+            if len([b for b in groupbones if b.hide]) == len(groupbones):
+                for b in groupbones:
+                    b.hide = False
+            # Some/None hidden
+            else:
+                for b in groupbones:
+                    b.hide = True
+            bpy.ops.object.mode_set(mode = lastobjectmode)
+                        
+        return {'FINISHED'}
+classlist.append(DMR_OP_BoneGroupHide)
+
+# =============================================================================
+
 addon_keymaps = []
 def register():
     for c in classlist:

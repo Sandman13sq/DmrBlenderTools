@@ -157,6 +157,7 @@ class DMR_PT_3DViewBoneGroups(bpy.types.Panel): # ------------------------------
         
         sub = c.row(align=True)
         sub.operator("dmr.bone_group_isolate", text="Isolate")
+        sub.operator("dmr.bone_group_hide", text="Hide")
 classlist.append(DMR_PT_3DViewBoneGroups)
 
 # ==========================================================================
