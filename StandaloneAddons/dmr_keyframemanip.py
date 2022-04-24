@@ -40,6 +40,11 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         description="Number of frames to shift by down the chain",
     )
     
+    undo_wave: bpy.props.BoolProperty(
+        name="Undo Wave", default=False,
+        description="Negates values to undo a previous wave operation",
+    )
+    
     def execute(self, context):
         obj = context.object
         armature = obj.data
@@ -82,6 +87,10 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         
         channel_shift = self.channel_shift
         position_shift = self.position_shift
+        
+        if self.undo_wave:
+            channel_shift = -channel_shift
+            position_shift = -position_shift
         
         for chainindex,chain in enumerate(chains):
             bonelink = [pbones[b.name] for b in chain]
