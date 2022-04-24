@@ -236,7 +236,7 @@ class DMR_OP_BoneChainMove(bpy.types.Operator):
         return {'FINISHED'}
 bpy.utils.register_class(DMR_OP_BoneChainMove)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_BoneChainAdd(bpy.types.Operator):
     bl_idname = "dmr.bone_chain_add"
@@ -259,7 +259,7 @@ class DMR_OP_BoneChainAdd(bpy.types.Operator):
         return {'FINISHED'}
 bpy.utils.register_class(DMR_OP_BoneChainAdd)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_BoneChainRemove(bpy.types.Operator):
     bl_idname = "dmr.bone_chain_remove"
@@ -289,7 +289,7 @@ class DMR_OP_BoneChainRemove(bpy.types.Operator):
         return {'FINISHED'}
 bpy.utils.register_class(DMR_OP_BoneChainRemove)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_BoneChainFromSelection(bpy.types.Operator):
     bl_idname = "dmr.bone_chain_from_selection"
@@ -338,6 +338,28 @@ class DMR_OP_BoneChainFromSelection(bpy.types.Operator):
         return {'FINISHED'}
 bpy.utils.register_class(DMR_OP_BoneChainFromSelection)
 
+# ---------------------------------------------------------------------------
+
+class DMR_OP_BoneChainAddBone(bpy.types.Operator):
+    bl_idname = "dmr.bone_chain_add_bone"
+    bl_label = "Add Bone to Bone Chain"
+    bl_description = "Adds active bone to bone chain"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE'
+    
+    def execute(self, context):
+        b = context.object.data.bones.active
+        bonechain = context.armature.bone_chains[context.object.data.bone_chains_index]
+        boneentry = bonechain.bones.add()
+        boneentry.name = b.name
+        boneentry.id = len(bonechain.bones)-1
+        
+        return {'FINISHED'}
+bpy.utils.register_class(DMR_OP_BoneChainAddBone)
+
 # =============================================================================
 
 class DMR_PT_BoneChains(bpy.types.Panel):
@@ -382,6 +404,8 @@ class DMR_PT_BoneChains(bpy.types.Panel):
         if activechain:
             row = box.row()
             row.template_list("OBJECT_UL_BoneChainBones", "", activechain, "bones", armature, "bone_chains_bone_index", rows=5)
+            c = row.column()
+            c.operator('dmr.bone_chain_add_bone', text='', icon='ADD')
         
 classlist.append(DMR_PT_BoneChains)
 
