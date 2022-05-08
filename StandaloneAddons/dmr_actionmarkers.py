@@ -45,7 +45,7 @@ class DMR_OP_ActionAddMarker(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_ActionAddMarker)
 
-# =============================================================================
+# --------------------------------------------------------------------------
 
 class DMR_OP_ActionRemoveMarker(bpy.types.Operator):
     bl_label = "Remove Action Marker"
@@ -116,7 +116,7 @@ class DMR_OP_ActionRemoveMarker(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_ActionRemoveMarker)
 
-# =============================================================================
+# --------------------------------------------------------------------------
 
 class DMR_OP_ActionMoveMarker(bpy.types.Operator):
     bl_label = "Move Action Marker"
@@ -183,7 +183,7 @@ class DMR_OP_ActionMoveMarker(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_ActionMoveMarker)
 
-# =============================================================================
+# --------------------------------------------------------------------------
 
 class DMR_OP_SetSceneFrame(bpy.types.Operator):
     bl_label = "Set Scene Frame"
@@ -206,7 +206,7 @@ class DMR_OP_SetSceneFrame(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_SetSceneFrame)
 
-# =============================================================================
+# --------------------------------------------------------------------------
 
 class DMR_OP_SyncRangeToMarkers(bpy.types.Operator):
     bl_label = "Sync Frame Range to Markers"
@@ -230,6 +230,29 @@ class DMR_OP_SyncRangeToMarkers(bpy.types.Operator):
         sc.frame_end = max(markerframes)
         return {'FINISHED'}
 classlist.append(DMR_OP_SyncRangeToMarkers)
+
+# --------------------------------------------------------------------------
+
+class DMR_OP_ActionMarkers_SelectAction(bpy.types.Operator):
+    bl_label = "Select Action and Sync Markers"
+    bl_idname = 'dmr.markers_select_action'
+    bl_description = 'Sets action of all objects to match active';
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    actionname: bpy.props.StringProperty(name="Action Name",)
+    
+    @classmethod
+    def poll(self, context):
+        return context.object
+    
+    def execute(self, context):
+        action = bpy.data.actions[self.actionname]
+        
+        if action:
+            context.object.animation_data.action = action;
+            bpy.ops.dmr.sync_frame_range_to_markers()
+        return {'FINISHED'}
+classlist.append(DMR_OP_ActionMarkers_SelectAction);
 
 # =====================================================================================
 
@@ -316,6 +339,40 @@ class DMR_PT_ActionMarkers_Graph(bpy.types.Panel):
         layout.operator('dmr.sync_frame_range_to_markers')
         DrawMarkerUIList(self, context)
 classlist.append(DMR_PT_ActionMarkers_Graph)
+
+# =============================================================================
+
+class DMR_UL_ActionMarkers_SelectAction(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        r = layout.row(align=1)
+        r = [r.row(align=1) for x in (0, 1)]
+        r[0].scale_x = 0.3
+        r[1].scale_x = 1
+        r[0].label(text=' '+str(index))
+        r[1].operator('dmr.set_scene_frame', text='', icon='PLAY', emboss=context.scene.frame_current!=item.frame).frame=item.frame
+classlist.append(DMR_UL_ActionMarkers_SelectAction)
+
+# --------------------------------------------------------------------------
+class DMR_PT_ActionMarkers_ActionSelect(bpy.types.Panel):
+    bl_label = "Action Select"
+    bl_space_type = 'GRAPH_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "Markers" # Name of sidebar
+    
+    @classmethod 
+    def poll(self, context):
+        return (
+            context.object and 
+            context.object.animation_data and
+            context.object.animation_data.action
+            )
+    
+    def draw(self, context):
+        layout = self.layout
+        c = layout.column(align=1)
+        for a in bpy.data.actions:
+            c.operator('dmr.markers_select_action', text = a.name).actionname = a.name
+classlist.append(DMR_PT_ActionMarkers_ActionSelect)
 
 # =============================================================================
 
