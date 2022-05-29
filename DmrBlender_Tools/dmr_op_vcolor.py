@@ -134,26 +134,39 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
         default=1.0
     )
     
+    use_vertices : bpy.props.BoolProperty(
+        name="Use Vertices", default=False,
+        description='Change using vertices instead of faces.',
+    )
+    
     def execute(self, context):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
         
         amt = 1.0-self.mixamount
         
+        targetcolor = mathutils.Vector(bpy.context.scene.editmodecolor)
+        
         for obj in [x for x in context.selected_objects] + [context.object]:
             if obj.type != 'MESH': 
                 continue
             
             mesh = obj.data
+            # Create color layer if not found
             if not mesh.vertex_colors:
                 mesh.vertex_colors.new()
             vcolors = mesh.vertex_colors.active.data
             
             targetpolys = [poly for poly in mesh.polygons if poly.select]
-            targetloops = [l for p in targetpolys for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total]] \
-            if targetpolys else [l for l in mesh.loops if mesh.vertices[l.vertex_index].select]
+            targetloops = []
+            # Use faces
+            if targetpolys and not self.use_vertices:
+                targetloops = (l for p in targetpolys for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total])
+            # Use fertices
+            else:
+                targetloops = (l for l in mesh.loops if mesh.vertices[l.vertex_index].select)
             
-            targetcolor = mathutils.Vector(bpy.context.scene.editmodecolor)
+            # Set colors
             for l in targetloops:
                 vcolors[l.index].color = targetcolor.lerp(vcolors[l.index].color, amt)
             
