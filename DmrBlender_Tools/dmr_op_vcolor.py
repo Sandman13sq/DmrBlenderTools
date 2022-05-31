@@ -126,6 +126,11 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
     bl_description = 'Sets vertex color for selected vertices/faces'
     bl_options = {'REGISTER', 'UNDO'}
     
+    targetcolor : bpy.props.FloatVectorProperty(
+        name="Paint Color", subtype="COLOR_GAMMA", size=4, min=0.0, max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
     mixamount : bpy.props.FloatProperty(
         name="Mix Amount",
         description='Amount to blend from old color to new color',
@@ -145,7 +150,7 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
         
         amt = 1.0-self.mixamount
         
-        targetcolor = mathutils.Vector(bpy.context.scene.editmodecolor)
+        targetcolor = mathutils.Vector(self.targetcolor)
         
         for obj in [x for x in context.selected_objects] + [context.object]:
             if obj.type != 'MESH': 

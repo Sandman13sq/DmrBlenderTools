@@ -33,7 +33,9 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
             
             colorarea = col.row(align = 1)
             row = colorarea.row(align = 1)
-            row.operator("dmr.set_vertex_color", icon='BRUSH_DATA', text="").mixamount = 1.0
+            op = row.operator("dmr.set_vertex_color", icon='BRUSH_DATA', text="")
+            op.mixamount = 1.0
+            op.targetcolor = context.scene.editmodecolor
             row.scale_x = 2
             row.scale_y = 2
             row.prop(context.scene, "editmodecolor", text='')
