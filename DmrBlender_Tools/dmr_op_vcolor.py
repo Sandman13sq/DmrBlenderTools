@@ -166,10 +166,18 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
             targetloops = []
             # Use faces
             if targetpolys and not self.use_vertices:
-                targetloops = (l for p in targetpolys for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total])
-            # Use fertices
+                targetloops = (
+                    l 
+                    for p in targetpolys 
+                    for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total]
+                    )
+            # Use vertices
             else:
-                targetloops = (l for l in mesh.loops if mesh.vertices[l.vertex_index].select)
+                targetloops = (
+                    l
+                    for p in mesh.polygons if not p.hide
+                    for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total] if mesh.vertices[l.vertex_index].select
+                    )
             
             # Set colors
             for l in targetloops:
