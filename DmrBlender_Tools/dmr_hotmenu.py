@@ -13,7 +13,7 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
     def draw(self, context):
         active = bpy.context.active_object
         obj = context.object
-        layout = self.layout
+        layout = self.layout.column()
         rd = context.scene.render
         row = layout.row(align = 0)
         row.scale_x = 2.0
@@ -43,16 +43,27 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
         row.column().prop(bpy.context.space_data.overlay, 'show_split_normals', icon_only=True, icon='NORMALS_VERTEX_FACE')
         if obj:
             row.column().prop(obj, "show_wire", icon_only=True, icon='MOD_LATTICE')
-        if obj and obj.mode == 'EDIT':
-            layout.prop(bpy.context.scene.tool_settings, 'proportional_size')
+        row.column().operator('dmr.toggle_sss_optimal_display', text='', icon='SHADING_WIRE')
+        
+        row.prop(context.tool_settings, "use_keyframe_insert_auto", text="", toggle=True)
+        
+        if obj:
+            if obj.mode == 'EDIT':
+                layout.prop(bpy.context.scene.tool_settings, 'proportional_size')
+            
+            if obj.animation_data:
+                #layout.template_ID(obj.animation_data, "action", new="action.new", unlink="action.unlink")
+                layout.prop(obj.animation_data, 'action')
+            if obj.find_armature() and obj.find_armature().animation_data:
+                r = layout.row()
+                rr = r.row()
+                rr.scale_x = 0.4
+                layout.prop(obj.find_armature().animation_data, 'action', text='Parent')
         
         row = layout.row(align=1)
         row.scale_x = 2.0
         row.scale_y = 1.0
         row.alignment = 'CENTER'
-        
-        row.column().operator('dmr.toggle_sss_optimal_display', icon = 'SHADING_WIRE')
-        
 classlist.append(DMR_PT_HotMenu)
 
 # =============================================================================
