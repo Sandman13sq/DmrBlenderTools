@@ -371,6 +371,102 @@ classlist.append(DMR_OP_MoveVertexGroupToEnd)
 
 # =============================================================================
 
+class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
+    bl_label = "Fix Vertex Group Sides"
+    bl_idname = 'dmr.fix_vertex_group_sides'
+    bl_description = 'Sets the side suffix (.l, .r) for selected vertices'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    method : bpy.props.EnumProperty(
+        name='Fix Method',
+        description='Method to change vertex groups',
+        items = (
+            ('FLIP', 'Flip Sides', 'Flips mirrored vertex group sides'),
+            ('LEFT', 'Force Left', 'Forces vertex groups to the left side'),
+            ('RIGHT', 'Force Right', 'Forces vertex groups to the right side'),
+            ),
+        default='FLIP'
+        )
+    
+    def execute(self, context):
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        count = 0
+        
+        method = self.method
+        
+        oppositestr = {
+            '.l': '.r', 
+            '.r': '.l',
+            '.L': '.R',
+            '.R': '.L'
+        }
+        
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                vgroups = obj.vertex_groups
+                
+                # Find groups to fix
+                if method == 'FLIP': # All groups with a mirror suffix
+                    targetgroups = {
+                        vg.index: vg for vg in vgroups if sum([vg.name[-2:]==s for s in oppositestr.keys()])
+                    }
+                elif method == 'RIGHT': # Groups that end with an L
+                    targetgroups = {
+                        vg.index: vg for vg in vgroups if (vg.name[-1].lower()=='l' and sum([vg.name[-2:]==s for s in oppositestr.keys()]))
+                    }
+                elif method == 'LEFT': # Groups that end with an R
+                    targetgroups = {
+                        vg.index: vg for vg in vgroups if (vg.name[-1].lower()=='r' and sum([vg.name[-2:]==s for s in oppositestr.keys()]))
+                    }
+                
+                for x in targetgroups.items():
+                    print([x[0], x[1].name])
+                
+                for v in [v for v in obj.data.vertices if v.select]:
+                    checkedvges = []
+                    for vge in v.groups:
+                        if vge in checkedvges:
+                            continue
+                        
+                        # Group is a mirror group
+                        if vge.group in targetgroups.keys():
+                            g1 = vgroups[vge.group]
+                            g2 = vgroups[g1.name[:-2]+oppositestr[g1.name[-2:]]]
+                            w1 = vge.weight
+                            
+                            checkedvges.append(vge)
+                            count += 1
+                            
+                            # Flip sides
+                            if method == 'FLIP':
+                                # Vertex has entry with opposite group
+                                vge2 = ([vge for vge in v.groups if vge.group == g2.index]+[None])[0]
+                                if vge2 != None:
+                                    w2 = vge2.weight
+                                    g1.add([v.index], w2, 'REPLACE')
+                                    g2.add([v.index], w1, 'REPLACE')
+                                    checkedvges.append(vge2)
+                                # Vertex only has one side
+                                else:
+                                    g1.remove([v.index])
+                                    g2.add([v.index], w1, 'REPLACE')
+                                
+                                print([g1.name, g2.name])
+                            # Force Right/Left
+                            elif method == 'RIGHT' or method == 'LEFT':
+                                g1.remove([v.index])
+                                g2.add([v.index], w1, 'REPLACE')
+        
+        self.report({'INFO'}, "Fixed %s weights" % count)
+        
+        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+            
+        return {'FINISHED'}
+classlist.append(DMR_OT_FixVertexGroupSides)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
