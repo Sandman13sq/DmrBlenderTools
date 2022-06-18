@@ -19,6 +19,11 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
         default = 0.01
     )
     
+    use_render_layer : bpy.props.BoolProperty(
+        name="Use Render Layer", default=False,
+        description='Sample render layer instead of selected layer',
+    )
+    
     def execute(self, context):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
@@ -32,6 +37,9 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
             return {'FINISHED'}
         
         vcolors = mesh.vertex_colors.active.data
+        if self.use_render_layer:
+            vcolors = [lyr for lyr in mesh.vertex_colors if lyr.active_render][0].data
+        
         loops = mesh.loops
         vertexmode = 0
         
@@ -75,6 +83,8 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
                 continue
             
             vcolors = mesh.vertex_colors.active.data
+            if self.use_render_layer:
+                vcolors = [lyr for lyr in mesh.vertex_colors if lyr.active_render][0].data
             loops = mesh.loops
             vertexmode = 0
             
