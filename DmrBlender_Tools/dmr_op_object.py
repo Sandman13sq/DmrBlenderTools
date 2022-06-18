@@ -202,9 +202,8 @@ class DMR_OP_NewUVLayerForSelected(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=200)
     
     def execute(self, context):
-        for obj in context.selected_objects:
-            if obj.type == 'MESH':
-                obj.data.uv_layers.new(name=self.name)
+        for mesh in set([obj.data for obj in context.selected_objects if obj.type == 'MESH']):
+            mesh.uv_layers.new(name=self.name)
         
         return {'FINISHED'}
 classlist.append(DMR_OP_NewUVLayerForSelected)
@@ -223,9 +222,8 @@ class DMR_OP_NewVCLayerForSelected(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=200)
     
     def execute(self, context):
-        for obj in context.selected_objects:
-            if obj.type == 'MESH':
-                obj.data.vertex_colors.new(name=self.name)
+        for mesh in set([obj.data for obj in context.selected_objects if obj.type == 'MESH']):
+            mesh.vertex_colors.new(name=self.name)
         
         return {'FINISHED'}
 classlist.append(DMR_OP_NewVCLayerForSelected)
