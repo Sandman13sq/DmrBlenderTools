@@ -346,6 +346,42 @@ classlist.append(DMR_OP_BoneSelectLessParent)
 
 # =============================================================================
 
+class DMR_OP_BoneSelectNoKeyframes(bpy.types.Operator):
+    bl_label = "Select Bones Without Keyframes"
+    bl_idname = 'dmr.bone_select_no_keyframe'
+    bl_description = "Selects bones without keyframes"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return (
+            context.object 
+            and context.object.type == 'ARMATURE' 
+            and context.object.mode == 'POSE'
+            )
+    
+    def execute(self, context):
+        object = context.object
+        bones = object.data.bones
+        pbones = object.pose.bones
+        
+        if not object.animation_data:
+            self.report({'WARNING'}, "Object has no active action.")
+            return {'FINISHED'}
+        action = object.animation_data.action
+        
+        fcurvepaths = [fc.data_path for fc in action.fcurves if len(fc.keyframe_points) > 0]
+        targetbones = set([b for b in bones if not sum([1 for path in fcurvepaths if b.name in path])])
+        
+        for b in targetbones:
+            if not b.hide:
+                b.select = True
+                        
+        return {'FINISHED'}
+classlist.append(DMR_OP_BoneSelectNoKeyframes)
+
+# =============================================================================
+
 class DMR_OP_BoneGroupIsolate(bpy.types.Operator):
     bl_label = "Isolate Bone Group"
     bl_idname = 'dmr.bone_group_isolate'
@@ -453,7 +489,7 @@ def register():
         kmi = km.keymap_items.new(DMR_OP_BoneSelectLess.bl_idname, type='NUMPAD_MINUS', value='PRESS', ctrl=True, shift=False)
         kmi = km.keymap_items.new(DMR_OP_BoneSelectMoreParent.bl_idname, type='NUMPAD_PLUS', value='PRESS', ctrl=True, shift=True)
         kmi = km.keymap_items.new(DMR_OP_BoneSelectLessParent.bl_idname, type='NUMPAD_MINUS', value='PRESS', ctrl=True, shift=True)
-        kmi = km.keymap_items.new(DMR_OP_BoneGroupIsolate_Active.bl_idname, type='I', value='PRESS', ctrl=True, shift=True)
+        kmi = km.keymap_items.new(DMR_OP_BoneGroupIsolate_Active.bl_idname, type='H', value='PRESS', ctrl=True, shift=True)
         addon_keymaps.append((km, kmi))
 
 def unregister():
