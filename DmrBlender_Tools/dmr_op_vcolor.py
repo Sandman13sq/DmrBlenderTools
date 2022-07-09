@@ -24,6 +24,11 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
         description='Sample render layer instead of selected layer',
     )
     
+    ignore_alpha : bpy.props.BoolProperty(
+        name="Ignore Alpha", default=True,
+        description="Ignore alpha channel in comparison",
+    )
+    
     def execute(self, context):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
@@ -72,6 +77,8 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
             nb = netcolor[2]
             na = netcolor[3]
         
+        ignore_alpha = self.ignore_alpha
+        
         # Set Color
         for obj in context.selected_objects:
             if obj.type != 'MESH':
@@ -107,6 +114,8 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
                     g*=g 
                     b*=b 
                     a*=a
+                    if ignore_alpha:
+                        a = thresh
                     if (r<=thresh and g<=thresh and b<=thresh and a<=thresh):
                         f.select = 1
             # Vertices
@@ -121,6 +130,8 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
                     g*=g 
                     b*=b 
                     a*=a
+                    if ignore_alpha:
+                        a = thresh
                     if (r<=thresh and g<=thresh and b<=thresh and a<=thresh):
                         mesh.vertices[l.vertex_index].select = 1
         
@@ -149,6 +160,11 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
         default=1.0
     )
     
+    keep_alpha : bpy.props.BoolProperty(
+        name="Keep Alpha", default=False,
+        description="Prevent changing the alpha value of existing colors",
+    )
+    
     use_vertices : bpy.props.BoolProperty(
         name="Use Vertices", default=False,
         description='Change using vertices instead of faces.',
@@ -161,6 +177,7 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
         amt = 1.0-self.mixamount
         
         targetcolor = mathutils.Vector(self.targetcolor)
+        vectorsize = 3 if self.keep_alpha else 4
         
         for obj in [x for x in context.selected_objects] + [context.object]:
             if obj.type != 'MESH': 
@@ -191,7 +208,7 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
             
             # Set colors
             for l in targetloops:
-                vcolors[l.index].color = targetcolor.lerp(vcolors[l.index].color, amt)
+                vcolors[l.index].color[:vectorsize] = targetcolor.lerp(vcolors[l.index].color, amt)[:vectorsize]
             
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
