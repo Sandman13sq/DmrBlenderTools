@@ -53,13 +53,13 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel): # ----------------------------
         
         row = sub.row(align = 1)
         r = row.row(align=1)
-        r.scale_x = 0.8
         op = r.operator('object.vertex_group_clean', text = "Clean")
         op.group_select_mode = group_select_mode
         op.limit = 0.025
         op.keep_single = True
         op = r.operator('object.vertex_group_limit_total', text = "Limit")
         op.group_select_mode = group_select_mode
+        r.operator('object.vertex_group_remove_from', text="", icon='WORLD').use_all_groups = True
         
         r = sub.row(align=1)
         op = r.operator('object.vertex_group_normalize_all', text = "Normalize All")
