@@ -26,7 +26,7 @@ def ChannelSelect(self, i):
 
 # =============================================================================
 
-class DMR_OT_CombineImageValues(bpy.types.Operator):
+class DMR_OT_ComposeImageValues(bpy.types.Operator):
     """Compose a value map image from existing images"""
     bl_idname = "dmr.compose_value_map_image"
     bl_label = "Compose Value Map Image from Images"
@@ -40,25 +40,20 @@ class DMR_OT_CombineImageValues(bpy.types.Operator):
     channels : bpy.props.BoolVectorProperty(name='Target Channels',
         size=4, default=(True, True, True, True), subtype='COLOR')
     
-    source_image_0 : ImageProp(0)
-    source_image_1 : ImageProp(1)
-    source_image_2 : ImageProp(2)
-    source_image_3 : ImageProp(3)
+    source0 : ImageProp(0)
+    source1 : ImageProp(1)
+    source2 : ImageProp(2)
+    source3 : ImageProp(3)
     
-    source_read_channel_0 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
-    source_read_channel_1 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
-    source_read_channel_2 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
-    source_read_channel_3 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
-    
-    source_write_channel_0 : bpy.props.EnumProperty(name='Write Channel', items=Items_RGBA, default=0)
-    source_write_channel_1 : bpy.props.EnumProperty(name='Write Channel', items=Items_RGBA, default=1)
-    source_write_channel_2 : bpy.props.EnumProperty(name='Write Channel', items=Items_RGBA, default=2)
-    source_write_channel_3 : bpy.props.EnumProperty(name='Write Channel', items=Items_RGBA, default=3)
+    read0 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
+    read1 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
+    read2 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
+    read3 : bpy.props.EnumProperty(name='Read Channel', items=Items_RGBA, default=0)
     
     # ---------------------------------------------------------
     
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=240)
+        return context.window_manager.invoke_props_dialog(self)
     
     # ---------------------------------------------------------
     
@@ -67,23 +62,31 @@ class DMR_OT_CombineImageValues(bpy.types.Operator):
         c = layout.column()
         c.prop(self, 'image')
         r = c.row()
-        r.prop(self, 'channels', text='Target Channels', expand=True)
         
         c = layout.column()
         c.label(text='Source Images')
         
         for i in range(0, 4):
-            b = c.box().column(align=1)
+            b = c.box()
+            
+            r = b.row()
+            rr = r.row()
+            rr.scale_x = 0.4
+            rr.scale_y = 2.0
+            #rr.label(text=("RGBA")[i])
+            rr.prop(self, 'channels', index=i, text=("RGBA")[i], toggle=True)
+            
+            b = r.column(align=1)
             b.enabled = self.channels[i]
+            
             r = b.row(align=1)
-            r.prop(self, 'source_image_%d'%i, text='')
+            r.prop(self, 'source%d'%i, text='')
             r = b.row()
             rr = r.row(align=1)
-            rr.label(text='Read')
-            rr.prop(self, 'source_read_channel_%d'%i, text='Read', expand=True, icon_only=False)
-            rr = r.row(align=1)
-            rr.label(text='Write')
-            rr.prop(self, 'source_write_channel_%d'%i, text='Write', expand=True, icon_only=False)
+            rr.label(text="Read Channel:")
+            rr = rr.row()
+            rr.scale_x = 0.5
+            rr.prop(self, 'read%d'%i, text='Read', expand=True, icon_only=False)
     
     # ---------------------------------------------------------
     
@@ -99,34 +102,40 @@ class DMR_OT_CombineImageValues(bpy.types.Operator):
         image.colorspace_settings.name = 'Non-Color'
         image.alpha_mode = 'STRAIGHT'
         
+        channels = self.channels # Bool vector of enabled channels
+        
+        # List of images[4]
         src_images = [
-            blender_images[getattr(self, 'source_image_%d'%i)] if getattr(self, 'source_image_%d'%i) in blender_images.keys() else None
+            blender_images[getattr(self, 'source%d'%i)] if (getattr(self, 'source%d'%i) in blender_images.keys() and channels[i]) else image
             for i in range4
         ]
         
-        readchannel = tuple([{'R':0, 'G':1, 'B':2, 'A':3}[getattr(self, 'source_read_channel_%d'%i)] for i in range4])
-        writechannel = tuple([{'R':0, 'G':1, 'B':2, 'A':3}[getattr(self, 'source_write_channel_%d'%i)] for i in range4])
+        # List of channels indices[4]
+        readchannel = tuple([{'R':0, 'G':1, 'B':2, 'A':3}[getattr(self, 'read%d'%i)] if channels[i] else i for i in range4])
         
         pixels = image.pixels
         w, h = image.size
         n = w*h
         n4 = n*4
         
-        sourcedata = tuple([
-            tuple(pixels) if not self.channels[i] else
-            tuple(src_images[i].pixels) if src_images[i] else (0,0,0,0)*n
-            for i in range4
-        ])
+        print("channels: ", self.channels)
+        print("read: ", readchannel)
+        print("src_images: ", [x.name if x else "<None>" for x in src_images])
+        
+        sourcedata = tuple([tuple(src_images[i].pixels) for i in range4])
         
         print('> Writing...')
         
+        # pixels = image[ writeindex ][ readindex ]
         image.pixels = tuple(
-            sourcedata[writechannel[pi%4]][4*(pi//4)+readchannel[pi%4]]
+            sourcedata[ pi%4 ][ 4*(pi//4)+readchannel[pi%4] ]
             for pi in range(0, n4)
         )
         
+        self.report({'INFO'}, "Composition Complete")
+        
         return {'FINISHED'}
-classlist.append(DMR_OT_CombineImageValues)
+classlist.append(DMR_OT_ComposeImageValues)
 
 # =============================================================================
 
@@ -146,6 +155,7 @@ class DMR_OT_NormalizeBWImage(bpy.types.Operator):
             self.report({'ERROR', 'No image found with name "%s"' % self.image.name})
             return {'FINISHED'}
         
+        image = bpy.data.images[self.image]
         pixels = tuple(image.pixels)
         values = tuple(pixels[i] for i in range(0, len(pixels), 4) if pixels[i] > 0.004)
         minvalue = min(values)

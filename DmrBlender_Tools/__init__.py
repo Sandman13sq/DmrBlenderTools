@@ -26,6 +26,7 @@ modulesNames = [
     'dmr_op_vgroup',
     'dmr_op_object',
     'dmr_op_pose',
+    'dmr_op_image',
     
     'dmr_panel_armature',
     'dmr_panel_shapekey',
