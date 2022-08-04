@@ -1,5 +1,6 @@
 import bpy
 import bmesh
+import mathutils
 
 classlist = []
 
@@ -205,8 +206,10 @@ class DMR_OP_PoseBoneToView(bpy.types.Operator):
         rdata = context.region_data
         rot = rdata.view_rotation.copy()
         loc = rdata.view_location.copy()
-        pbone.location = loc
+        
+        pbone.matrix = mathutils.Matrix.Translation(loc)
         pbone.rotation_quaternion = rot
+        
         bpy.ops.transform.translate(value=(0, 0, rdata.view_distance), 
             orient_type='LOCAL', 
             orient_matrix_type='LOCAL', 
@@ -382,11 +385,24 @@ classlist.append(DMR_OP_BoneSelectNoKeyframes)
 
 # =============================================================================
 
+def GetBoneGroups(self, context):
+    lastobjectmode = bpy.context.active_object.mode
+    bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+    
+    items = [tuple("Active (%s)" % c.object.pose.bone_groups.active.name)*3] + [
+        (g.name, g.name, g.name) for g in c.object.pose.bone_groups
+    ]
+    
+    bpy.ops.object.mode_set(mode = lastobjectmode)
+    return items
+
 class DMR_OP_BoneGroupIsolate(bpy.types.Operator):
     bl_label = "Isolate Bone Group"
     bl_idname = 'dmr.bone_group_isolate'
     bl_description = "Hides all bones not in bone group. Unhides if only those in group are shown"
     bl_options = {'REGISTER', 'UNDO'}
+    
+    group_name : bpy.props.StringProperty(name="Bone Group Name")
     
     @classmethod
     def poll(self, context):
@@ -398,7 +414,7 @@ class DMR_OP_BoneGroupIsolate(bpy.types.Operator):
             lastobjectmode = bpy.context.active_object.mode
             bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
             
-            bonegroup = active.pose.bone_groups.active
+            bonegroup = active.pose.bone_groups[self.group_name]
             bones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group != bonegroup]
             groupbones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group == bonegroup]
             
@@ -466,7 +482,7 @@ class DMR_OP_BoneGroupIsolate_Active(bpy.types.Operator):
     def execute(self, context):
         obj = context.object
         obj.pose.bone_groups.active = obj.pose.bones[obj.data.bones.active.name].bone_group
-        bpy.ops.dmr.bone_group_isolate()
+        bpy.ops.dmr.bone_group_isolate(group_name=obj.pose.bone_groups.active.name)
         return {'FINISHED'}
     
 classlist.append(DMR_OP_BoneGroupIsolate_Active)

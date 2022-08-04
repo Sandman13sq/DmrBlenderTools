@@ -156,7 +156,7 @@ class DMR_PT_3DViewBoneGroups(bpy.types.Panel): # ------------------------------
         sub.operator("pose.group_deselect", text="Deselect")
         
         sub = c.row(align=True)
-        sub.operator("dmr.bone_group_isolate", text="Isolate")
+        sub.operator("dmr.bone_group_isolate_active", text="Isolate")
         sub.operator("dmr.bone_group_hide", text="Hide")
 classlist.append(DMR_PT_3DViewBoneGroups)
 
@@ -224,13 +224,39 @@ classlist.append(DMR_PT_3DViewBones)
 
 # ==========================================================================
 
+class BoneGroupsContext(bpy.types.Menu):
+    bl_label = "Isolate Bone Group"
+    bl_idname = "DMR_MT_BoneGroupsContext"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.separator()
+        
+        c = layout.column(align=1)
+        
+        for g in bpy.context.object.pose.bone_groups:
+            r = c.row()
+            r.operator("dmr.bone_group_isolate", text=g.name, icon='CLIPUV_HLT').group_name = g.name
+classlist.append(BoneGroupsContext)
+
+def bone_groups_context_draw(self, context):
+    layout = self.layout
+    layout.menu(BoneGroupsContext.bl_idname)
+
+# ==========================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
+    
+    if "dmrblendertools_panel_armature" not in bpy.context.scene.keys():
+        bpy.context.scene["dmrblendertools_panel_armature"] = 1
+        bpy.types.VIEW3D_MT_pose_context_menu.prepend(bone_groups_context_draw)
 
 def unregister():
     for c in reversed(classlist):
         bpy.utils.unregister_class(c)
+    bpy.types.VIEW3D_MT_pose_context_menu.remove(bone_groups_context_draw)
 
 if __name__ == "__main__":
     register()
