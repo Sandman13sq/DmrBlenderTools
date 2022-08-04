@@ -3,6 +3,42 @@ import mathutils
 
 classlist = []
 
+def PickColorFromObject(obj, use_render_layer=False):
+    mesh = obj.data
+    
+    if not mesh.vertex_colors:
+        return None
+    
+    vcolors = mesh.vertex_colors.active.data
+    if use_render_layer:
+        vcolors = [lyr for lyr in mesh.vertex_colors if lyr.active_render][0].data
+    
+    loops = mesh.loops
+    
+    targetpolys = [poly for poly in mesh.polygons if poly.select]
+    if targetpolys:
+        targetloops = [l for p in targetpolys for l in loops[p.loop_start:p.loop_start + p.loop_total]]
+    else:
+        targetloops = [l for l in loops if mesh.vertices[l.vertex_index].select]
+    
+    if len(targetloops) == 0:
+        return None
+    else:
+        netcolor = [0.0, 0.0, 0.0, 0.0]
+        netcount = len(targetloops)
+        for l in targetloops:
+            color = vcolors[l.index].color
+            netcolor[0] += color[0]
+            netcolor[1] += color[1]
+            netcolor[2] += color[2]
+            netcolor[3] += color[3]
+        netcolor[0] /= netcount
+        netcolor[1] /= netcount
+        netcolor[2] /= netcount
+        netcolor[3] /= netcount
+    
+    return netcolor
+
 # =============================================================================
 
 class DMR_OP_SelectByVertexColor(bpy.types.Operator):
@@ -141,18 +177,13 @@ classlist.append(DMR_OP_SelectByVertexColor)
 
 # =============================================================================
 
-class DMR_OP_SetVertexColor(bpy.types.Operator):
-    bl_label = "Set Vertex Color"
-    bl_idname = 'dmr.set_vertex_color'
-    bl_description = 'Sets vertex color for selected vertices/faces'
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    targetcolor : bpy.props.FloatVectorProperty(
+class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
+    color : bpy.props.FloatVectorProperty(
         name="Paint Color", subtype="COLOR_GAMMA", size=4, min=0.0, max=1.0,
         default=(1.0, 1.0, 1.0, 1.0)
     )
     
-    mixamount : bpy.props.FloatProperty(
+    mix_amount : bpy.props.FloatProperty(
         name="Mix Amount",
         description='Amount to blend from old color to new color',
         soft_min=0.0,
@@ -174,9 +205,9 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
         
-        amt = 1.0-self.mixamount
+        amt = 1.0-self.mix_amount
         
-        targetcolor = mathutils.Vector(self.targetcolor)
+        targetcolor = mathutils.Vector(self.color)
         vectorsize = 3 if self.keep_alpha else 4
         
         for obj in [x for x in context.selected_objects] + [context.object]:
@@ -212,7 +243,45 @@ class DMR_OP_SetVertexColor(bpy.types.Operator):
             
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
+
+# -----------------------------------------------------------------------------
+
+class DMR_OP_SetVertexColor(DMR_OP_SetVertexColor_Super):
+    bl_label = "Set Vertex Color"
+    bl_idname = 'dmr.set_vertex_color'
+    bl_description = 'Sets vertex color for selected vertices/faces'
+    bl_options = {'REGISTER', 'UNDO'}
 classlist.append(DMR_OP_SetVertexColor)
+
+# -----------------------------------------------------------------------------
+
+class DMR_OP_AdjustVertexColor(DMR_OP_SetVertexColor_Super):
+    bl_label = "Adjust Vertex Color"
+    bl_idname = 'dmr.adjust_vertex_color'
+    bl_description = 'Adjusts vertex color for active vertex/face'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'MESH' and context.object.data.vertex_colors
+    
+    def invoke(self, context, event):
+        obj = context.object
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        loops = [l.index for l in obj.data.loops if obj.data.vertices[l.vertex_index].select]
+        
+        if len(loops) == 0:
+            self.report({'WARNING'}, "No vertices selected")
+            bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+            return {'FINISHED'}
+        
+        self.color = [ obj.data.vertex_colors.active.data[l] for l in loops ][0].color
+        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+        
+        return self.execute(context)
+classlist.append(DMR_OP_AdjustVertexColor)
 
 # =============================================================================
 
@@ -319,6 +388,11 @@ class DMR_OP_PickVertexColor(bpy.types.Operator):
     bl_description = 'Gets vertex color from selected vertices/faces'
     bl_options = {'REGISTER', 'UNDO'}
     
+    use_render_layer : bpy.props.BoolProperty(
+        name="Use Render Layer", default=False,
+        description='Sample render layer instead of selected layer',
+    )
+    
     def execute(self, context):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
@@ -330,35 +404,77 @@ class DMR_OP_PickVertexColor(bpy.types.Operator):
             bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
             return {'FINISHED'}
         
-        vcolors = mesh.vertex_colors.active.data
-        loops = mesh.loops
+        newcolor = PickColorFromObject(context.active_object, self.use_render_layer)
         
-        targetpolys = [poly for poly in mesh.polygons if poly.select]
-        if targetpolys:
-            targetloops = [l for p in targetpolys for l in loops[p.loop_start:p.loop_start + p.loop_total]]
+        if newcolor != None:
+            bpy.context.scene.editmodecolor = newcolor
         else:
-            targetloops = [l for l in loops if mesh.vertices[l.vertex_index].select]
-        
-        if len(targetloops) == 0:
-            self.report({'WARNING'}, 'No vertices selected')
-        else:
-            netcolor = [0.0, 0.0, 0.0, 0.0]
-            netcount = len(targetloops)
-            for l in targetloops:
-                color = vcolors[l.index].color
-                netcolor[0] += color[0]
-                netcolor[1] += color[1]
-                netcolor[2] += color[2]
-                netcolor[3] += color[3]
-            netcolor[0] /= netcount
-            netcolor[1] /= netcount
-            netcolor[2] /= netcount
-            netcolor[3] /= netcount
-            bpy.context.scene.editmodecolor = netcolor
+            self.report({'WARNING'}, 'No loops selected')
         
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
 classlist.append(DMR_OP_PickVertexColor)
+
+# =============================================================================
+
+class DMR_OP_PickVertexColor_Palette(bpy.types.Operator):
+    bl_label = "Pick Vertex Color for Palette"
+    bl_idname = 'dmr.pick_vertex_color_palette'
+    bl_description = 'Gets vertex color from selected vertices/faces and sets palette color'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    palette_name : bpy.props.EnumProperty(
+        name="Palette Name", default = 0,
+        items=lambda x,c: (tuple([x.name]*3) for x in bpy.data.palettes)
+    )
+    index : bpy.props.IntProperty(name='Color Index', default=0)
+    
+    use_render_layer : bpy.props.BoolProperty(
+        name="Use Render Layer", default=False,
+        description='Sample render layer instead of selected layer',
+    )
+    
+    def execute(self, context):
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        mesh = context.active_object.data
+        
+        if not mesh.vertex_colors:
+            self.report({'WARNING'}, 'No vertex color data found')
+            bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+            return {'FINISHED'}
+        
+        palette = bpy.data.palettes[self.palette_name]
+        
+        newcolor = PickColorFromObject(context.active_object, self.use_render_layer)
+        
+        if newcolor != None:
+            palette.colors[self.index].color = newcolor[:3]
+        else:
+            self.report({'WARNING'}, 'No loops selected')
+        
+        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+        return {'FINISHED'}
+classlist.append(DMR_OP_PickVertexColor_Palette)
+
+# =============================================================================
+
+class DMR_OP_SetEditModeVCColor(bpy.types.Operator):
+    bl_label = "Set Edit Mode VC Color"
+    bl_idname = 'dmr.set_edit_mode_vc_color'
+    bl_description = "Sets the edit mode color used for painting vertex colors"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    color : bpy.props.FloatVectorProperty(
+        name="Paint Color", subtype="COLOR_GAMMA", size=4, min=0.0, max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
+    def execute(self, context):
+        bpy.context.scene.editmodecolor = self.color
+        return {'FINISHED'}
+classlist.append(DMR_OP_SetEditModeVCColor)
 
 # =============================================================================
 
