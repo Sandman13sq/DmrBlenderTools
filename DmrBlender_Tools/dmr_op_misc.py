@@ -201,6 +201,112 @@ classlist.append(DMR_OP_SetEdgeCrease)
 
 # =============================================================================
 
+class DMR_OP_FitMirrorModifierToUVEdge(bpy.types.Operator):
+    """Sets the \"Mirror U\" value to object UV bounds"""
+    bl_idname = "dmr.mirror_modifier_fit_to_uv_bounds"
+    bl_label = "Fit Mirror Modifier U Offset to UV Bounds"
+    
+    edge : bpy.props.EnumProperty(
+        name="Edge", default = 0, items=(
+            ('LEFT', "Left", "Fit to left bound of UVs"),
+            ('RIGHT', "Right", "Fit to right bound of UVs"),
+        ))
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
+    def execute(self, context):
+        object = context.object
+        uvlayer = object.data.uv_layers.active.data
+        print([m.type for m in object.modifiers])
+        
+        bound = 0
+        if self.edge == 'LEFT':
+            bound = min([uv.uv[0] for uv in uvlayer])-0.5
+        elif self.edge == 'RIGHT':
+            bound = max([uv.uv[0] for uv in uvlayer])-0.5
+        
+        for m in context.object.modifiers:
+            if m.type == 'MIRROR' and m.use_mirror_u:
+                m.mirror_offset_u = bound*2
+                print(bound)
+        return {'FINISHED'}
+classlist.append(DMR_OP_FitMirrorModifierToUVEdge)
+
+# =============================================================================
+
+class DMR_OP_RenamePalette(bpy.types.Operator):
+    """"""
+    bl_idname = "dmr.palette_rename"
+    bl_label = "Rename Palette"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    palette_name : bpy.props.EnumProperty(items = lambda x,c: (tuple([x.name]*3) for x in bpy.data.palettes))
+    new_name : bpy.props.StringProperty()
+    
+    def execute(self, context):
+        data = bpy.data.palettes
+        if self.palette_name in data.keys():
+            data[self.palette_name].name = self.new_name
+        return {'FINISHED'}
+classlist.append(DMR_OP_RenamePalette)
+
+# =============================================================================
+
+class DMR_OP_PaletteAddColor(bpy.types.Operator):
+    """"""
+    bl_idname = "dmr.palette_add_color"
+    bl_label = "Add Color to Palette"
+    
+    palette_name : bpy.props.EnumProperty(items = lambda x,c: (tuple([x.name]*3) for x in bpy.data.palettes))
+    color : bpy.props.FloatVectorProperty(
+        name="Paint Color", subtype="COLOR_GAMMA", size=4, min=0.0, max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
+    def execute(self, context):
+        data = bpy.data.palettes
+        if self.palette_name in data.keys():
+            data[self.palette_name].colors.new().color = self.color[:3]
+        return {'FINISHED'}
+classlist.append(DMR_OP_PaletteAddColor)
+
+# =============================================================================
+
+class DMR_OP_PaletteRemoveColor(bpy.types.Operator):
+    """"""
+    bl_idname = "dmr.palette_remove_color"
+    bl_label = "Remove Color from Palette"
+    
+    palette_name : bpy.props.EnumProperty(items = lambda x,c: (tuple([x.name]*3) for x in bpy.data.palettes))
+    index : bpy.props.IntProperty(default=0)
+    
+    def execute(self, context):
+        data = bpy.data.palettes
+        if self.palette_name in data.keys():
+            data[self.palette_name].colors.remove(data[self.palette_name].colors[self.index])
+        return {'FINISHED'}
+classlist.append(DMR_OP_PaletteRemoveColor)
+
+# =============================================================================
+
+class DMR_OP_RemovePalette(bpy.types.Operator):
+    """"""
+    bl_idname = "dmr.palette_remove"
+    bl_label = "Remove Palette"
+    
+    palette_name : bpy.props.EnumProperty(items = lambda x,c: (tuple([x.name]*3) for x in bpy.data.palettes))
+    
+    def execute(self, context):
+        data = bpy.data.palettes
+        if self.palette_name in data.keys():
+            data.remove(data.palettes[self.palette_name])
+        return {'FINISHED'}
+classlist.append(DMR_OP_RemovePalette)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
