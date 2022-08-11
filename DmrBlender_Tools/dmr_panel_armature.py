@@ -132,7 +132,6 @@ class DMR_PT_3DViewBoneGroups(bpy.types.Panel): # ------------------------------
             col.operator("pose.group_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
 
             split = layout.split()
-            split.active = (ob.proxy is None)
 
             col = split.column()
             col.prop(group, "color_set")
