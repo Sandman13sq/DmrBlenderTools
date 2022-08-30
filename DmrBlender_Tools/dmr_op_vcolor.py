@@ -3,23 +3,44 @@ import mathutils
 
 classlist = []
 
+def GetActiveVCLayer(mesh, render_layer=False):
+    if bpy.app.version >= (3, 2, 2):
+        return mesh.color_attributes.active if render_layer else mesh.color_attributes.active_color
+    else:
+        if render_layer:
+            return [lyr for lyr in mesh.vertex_colors if lyr.active_render][0]
+        return mesh.vertex_colors.active
+
+def GetTargetLoops(mesh, use_vertices=False):
+    targetpolys = [poly for poly in mesh.polygons if poly.select]
+    targetloops = []
+    
+    # Use faces
+    if targetpolys and not use_vertices:
+        targetloops = tuple(
+            l 
+            for p in targetpolys 
+            for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total]
+            )
+    # Use vertices
+    else:
+        targetloops = tuple(
+            l
+            for p in mesh.polygons if not p.hide
+            for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total] if mesh.vertices[l.vertex_index].select
+            )
+    
+    return targetloops
+
 def PickColorFromObject(obj, use_render_layer=False):
     mesh = obj.data
     
     if not mesh.vertex_colors:
         return None
     
-    vcolors = mesh.vertex_colors.active.data
-    if use_render_layer:
-        vcolors = [lyr for lyr in mesh.vertex_colors if lyr.active_render][0].data
+    vcolors = GetActiveVCLayer(mesh, use_render_layer).data
     
-    loops = mesh.loops
-    
-    targetpolys = [poly for poly in mesh.polygons if poly.select]
-    if targetpolys:
-        targetloops = [l for p in targetpolys for l in loops[p.loop_start:p.loop_start + p.loop_total]]
-    else:
-        targetloops = [l for l in loops if mesh.vertices[l.vertex_index].select]
+    targetloops = GetTargetLoops(mesh)
     
     if len(targetloops) == 0:
         return None
@@ -70,27 +91,21 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
         
         # Get active object's selected
-        obj = bpy.context.active_object
+        obj = context.active_object
         mesh = obj.data
         
-        if not mesh.vertex_colors:
+        if not GetActiveVCLayer(mesh):
             self.report({'WARNING'}, 'No vertex color data found for "%s"' % obj.name)
             return {'FINISHED'}
         
-        vcolors = mesh.vertex_colors.active.data
-        if self.use_render_layer:
-            vcolors = [lyr for lyr in mesh.vertex_colors if lyr.active_render][0].data
+        vcolors = GetActiveVCLayer(mesh, self.use_render_layer).data
         
         loops = mesh.loops
         vertexmode = 0
         
         targetpolys = [poly for poly in mesh.polygons if poly.select]
-        if targetpolys:
-            targetloops = [l for p in targetpolys for l in loops[p.loop_start:p.loop_start + p.loop_total]]
-            vertexmode = 0
-        else:
-            targetloops = [l for l in loops if mesh.vertices[l.vertex_index].select]
-            vertexmode = 1
+        vertexmode = len(targetpolys) == 0
+        targetloops = GetTargetLoops(mesh)
         
         if len(targetloops) > 0:
             netcolor = [0.0, 0.0, 0.0, 0.0]
@@ -115,24 +130,26 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
         
         ignore_alpha = self.ignore_alpha
         
-        # Set Color
-        for obj in context.selected_objects:
+        hits = 0
+        
+        # Select Colors
+        for obj in set(list(context.selected_objects)+[context.active_object]):
+            if not obj:
+                continue
             if obj.type != 'MESH':
                 continue
             
             mesh = obj.data
             
-            if not mesh.vertex_colors:
+            if not GetActiveVCLayer(mesh):
                 continue
             
-            vcolors = mesh.vertex_colors.active.data
-            if self.use_render_layer:
-                vcolors = [lyr for lyr in mesh.vertex_colors if lyr.active_render][0].data
+            print(obj.name)
+            vcolors = GetActiveVCLayer(mesh, self.use_render_layer).data
             loops = mesh.loops
-            vertexmode = 0
             
             # Faces
-            if vertexmode == 0:
+            if vertexmode == False:
                 for f in mesh.polygons:
                     c2 = [0]*4
                     for l in f.loop_indices:
@@ -153,7 +170,8 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
                     if ignore_alpha:
                         a = thresh
                     if (r<=thresh and g<=thresh and b<=thresh and a<=thresh):
-                        f.select = 1
+                        f.select = True
+                        hits += 1
             # Vertices
             else:
                 for l in [x for x in loops if x not in targetloops]:
@@ -167,10 +185,12 @@ class DMR_OP_SelectByVertexColor(bpy.types.Operator):
                     b*=b 
                     a*=a
                     if ignore_alpha:
-                        a = thresh
+                        a = 0.0
                     if (r<=thresh and g<=thresh and b<=thresh and a<=thresh):
-                        mesh.vertices[l.vertex_index].select = 1
+                        mesh.vertices[l.vertex_index].select = True
+                        hits += 1
         
+        print("Hits: %d" % hits)
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
 classlist.append(DMR_OP_SelectByVertexColor)
@@ -218,24 +238,10 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
             # Create color layer if not found
             if not mesh.vertex_colors:
                 mesh.vertex_colors.new()
-            vcolors = mesh.vertex_colors.active.data
+            vcolors = GetActiveVCLayer(mesh).data
             
             targetpolys = [poly for poly in mesh.polygons if poly.select]
-            targetloops = []
-            # Use faces
-            if targetpolys and not self.use_vertices:
-                targetloops = (
-                    l 
-                    for p in targetpolys 
-                    for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total]
-                    )
-            # Use vertices
-            else:
-                targetloops = (
-                    l
-                    for p in mesh.polygons if not p.hide
-                    for l in mesh.loops[p.loop_start:p.loop_start + p.loop_total] if mesh.vertices[l.vertex_index].select
-                    )
+            targetloops = GetTargetLoops(mesh, self.use_vertices)
             
             # Set colors
             for l in targetloops:
@@ -321,16 +327,9 @@ class DMR_OP_SetVertexColorChannel(bpy.types.Operator):
             mesh = obj.data
             if not mesh.vertex_colors:
                 mesh.vertex_colors.new()
-            vcolors = mesh.vertex_colors.active.data
-            loops = mesh.loops
+            vcolors = GetActiveVCLayer(mesh).data
             
-            targetpolys = [poly for poly in mesh.polygons if poly.select]
-            if targetpolys:
-                targetloops = [l for p in targetpolys for l in loops[p.loop_start:p.loop_start + p.loop_total]]
-            else:
-                targetloops = [l for l in loops if mesh.vertices[l.vertex_index].select]
-            
-            for l in targetloops:
+            for l in GetTargetLoops(mesh):
                 vcolors[l.index].color[self.channelindex] = self.channelvalue
         
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
@@ -364,15 +363,10 @@ class DMR_OP_VertexColorClearAlpha(bpy.types.Operator):
             mesh = obj.data
             if not mesh.vertex_colors:
                 mesh.vertex_colors.new()
-            vcolors = mesh.vertex_colors.active.data
+            vcolors = GetActiveVCLayer(mesh).data
             loops = mesh.loops
             
-            targetpolys = [poly for poly in mesh.polygons if poly.select]
-            if targetpolys:
-                targetloops = [l for p in targetpolys for l in loops[p.loop_start:p.loop_start + p.loop_total]]
-            else:
-                targetloops = [l for l in loops if mesh.vertices[l.vertex_index].select]
-            
+            targetloops = GetTargetLoops(mesh)
             for l in targetloops:
                 vcolors[l.index].color[3] = self.clearvalue
         
