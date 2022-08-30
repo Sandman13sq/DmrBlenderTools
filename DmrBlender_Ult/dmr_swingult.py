@@ -2335,8 +2335,6 @@ def register():
         bpy.utils.register_class(c)
     
     bpy.types.Scene.swing_ultimate = bpy.props.PointerProperty(name="Swing Data", type=SwingSceneData)
-    swing_ultimate = bpy.context.scene.swing_ultimate
-    swing_ultimate.UpdateIndex()
 
 def unregister():
     for c in classlist[::-1]:
