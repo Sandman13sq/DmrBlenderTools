@@ -399,7 +399,11 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
             '.l': '.r', 
             '.r': '.l',
             '.L': '.R',
-            '.R': '.L'
+            '.R': '.L',
+            '_l': '_r', 
+            '_r': '_l',
+            '_L': '_R',
+            '_R': '_L'
         }
         
         for obj in context.selected_objects:
@@ -421,6 +425,7 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
                     }
                 
                 for x in targetgroups.items():
+                    break
                     print([x[0], x[1].name])
                 
                 for v in [v for v in obj.data.vertices if v.select]:
@@ -452,7 +457,7 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
                                     g1.remove([v.index])
                                     g2.add([v.index], w1, 'REPLACE')
                                 
-                                print([g1.name, g2.name])
+                                #print([g1.name, g2.name])
                             # Force Right/Left
                             elif method == 'RIGHT' or method == 'LEFT':
                                 g1.remove([v.index])
