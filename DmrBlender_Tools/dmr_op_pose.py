@@ -414,10 +414,14 @@ class DMR_OP_BoneGroupIsolate(bpy.types.Operator):
             lastobjectmode = bpy.context.active_object.mode
             bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
             
-            bonegroup = active.pose.bone_groups[self.group_name]
-            bones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group != bonegroup]
-            groupbones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group == bonegroup]
-            
+            if self.group_name in active.pose.bone_groups.keys(): 
+                bonegroup = active.pose.bone_groups[self.group_name]
+                bones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group != bonegroup]
+                groupbones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group == bonegroup]
+            else:
+                bones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group != None]
+                groupbones = [active.data.bones[pb.name] for pb in active.pose.bones if pb.bone_group == None]
+                
             if len([b for b in bones if not b.hide]) > 0:
                 for b in bones:
                     b.hide = True
@@ -482,7 +486,7 @@ class DMR_OP_BoneGroupIsolate_Active(bpy.types.Operator):
     def execute(self, context):
         obj = context.object
         obj.pose.bone_groups.active = obj.pose.bones[obj.data.bones.active.name].bone_group
-        bpy.ops.dmr.bone_group_isolate(group_name=obj.pose.bone_groups.active.name)
+        bpy.ops.dmr.bone_group_isolate(group_name=obj.pose.bone_groups.active.name if obj.pose.bone_groups.active else "")
         return {'FINISHED'}
     
 classlist.append(DMR_OP_BoneGroupIsolate_Active)
