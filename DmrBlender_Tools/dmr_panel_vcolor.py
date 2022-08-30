@@ -167,19 +167,30 @@ class DMR_PT_3DViewVertexColors_Layers(bpy.types.Panel): # ---------------------
     
     def draw(self, context):
         obj = context.active_object
-        me = obj.data
-        vcolors = me.vertex_colors
+        mesh = obj.data
         
         layout = self.layout
         row = layout.row(align=0)
         col = row.column()
-        col.template_list("MESH_UL_vcols", "vcols", me, "vertex_colors", me.vertex_colors, "active_index", rows=2)
-        col = row.column(align=True)
-        col.operator("mesh.vertex_color_add", icon='ADD', text="")
-        col.operator("mesh.vertex_color_remove", icon='REMOVE', text="")
-        col = col.column(align=True)
-        col.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
-        col.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+        
+        if bpy.app.version >= (3, 2, 2):
+            col.template_list("MESH_UL_color_attributes", "color_attributes", mesh, "color_attributes", mesh.color_attributes, "active_color_index", rows=3)
+            col = row.column(align=True)
+            col.operator("geometry.color_attribute_add", icon='ADD', text="")
+            col.operator("geometry.color_attribute_remove", icon='REMOVE', text="")
+            col = col.column(align=True)
+            col.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
+            col.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+        else:
+            col.template_list("MESH_UL_vcols", "vcols", mesh, "vertex_colors", mesh.vertex_colors, "active_index", rows=2)
+            col = row.column(align=True)
+            col.operator("mesh.vertex_color_add", icon='ADD', text="")
+            col.operator("mesh.vertex_color_remove", icon='REMOVE', text="")
+            col = col.column(align=True)
+            col.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
+            col.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+        
+        
 classlist.append(DMR_PT_3DViewVertexColors_Layers)
 
 # =============================================================================
