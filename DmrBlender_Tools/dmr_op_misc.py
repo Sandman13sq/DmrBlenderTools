@@ -205,11 +205,13 @@ class DMR_OP_FitMirrorModifierToUVEdge(bpy.types.Operator):
     """Sets the \"Mirror U\" value to object UV bounds"""
     bl_idname = "dmr.mirror_modifier_fit_to_uv_bounds"
     bl_label = "Fit Mirror Modifier U Offset to UV Bounds"
+    bl_options = {'REGISTER', 'UNDO'}
     
     edge : bpy.props.EnumProperty(
         name="Edge", default = 0, items=(
             ('LEFT', "Left", "Fit to left bound of UVs"),
             ('RIGHT', "Right", "Fit to right bound of UVs"),
+            ('CURSOR', "2D Cursor", "Fit to 2D Cursor"),
         ))
     
     @classmethod
@@ -226,6 +228,8 @@ class DMR_OP_FitMirrorModifierToUVEdge(bpy.types.Operator):
             bound = min([uv.uv[0] for uv in uvlayer])-0.5
         elif self.edge == 'RIGHT':
             bound = max([uv.uv[0] for uv in uvlayer])-0.5
+        elif self.edge == 'RIGHT':
+            bound = context.area.spaces.active.cursor_location[0]-0.5
         
         for m in context.object.modifiers:
             if m.type == 'MIRROR' and m.use_mirror_u:
