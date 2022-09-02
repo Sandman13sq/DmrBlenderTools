@@ -1,3 +1,14 @@
+bl_info = {
+    'name': 'Shape Key Snapshots',
+    'description': 'Store shape key state as snapshots with a name and vertex group mask entry',
+    'author': 'Dreamer13sq',
+    'version': (0, 1),
+    'blender': (3, 0, 0),
+    'category': 'Mesh',
+    'support': 'COMMUNITY',
+}
+
+
 import bpy
 
 classlist = []
