@@ -264,7 +264,7 @@ def register():
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist.reverse():
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":
