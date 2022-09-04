@@ -1203,7 +1203,6 @@ classlist.append(SwingData)
 
 class SwingSceneData(bpy.types.PropertyGroup):
     data : bpy.props.CollectionProperty(type=SwingData)
-    #index : bpy.props.IntProperty(name="Active Swing Data", default=0)
     index : bpy.props.EnumProperty(name="Active Swing Data", default=0, items=SwingSceneNames)
     count : bpy.props.IntProperty()
     
@@ -1254,18 +1253,22 @@ class SwingSceneData(bpy.types.PropertyGroup):
     def FindPRCIndex(self, name):
         return [x.index for x in self.data if x.name == name][0]
     
+    # Returns swing data by name
     def FindData(self, name):
         for prc in self.data:
             if prc.name == name:
                 return prc
         return None
-        
+    
+    # Returns index of active data
     def GetActiveIndex(self):
         return int(self.index)
     
+    # Returns active swing data
     def GetActiveData(self):
         return self.data[int(self.index)] if self.count > 0 else None
     
+    # Adds and returns new swing data
     def Add(self, name="New Swing Data"):
         prc = self.data.add()
         prc.name = name + " %d" % self.count
@@ -1273,11 +1276,13 @@ class SwingSceneData(bpy.types.PropertyGroup):
         self.index = str(prc.index)
         return prc
     
+    # Removes swing data at index
     def Remove(self, index):
         if self.count > 0:
             self.data.remove(index)
             self.UpdateIndex()
     
+    # Updates indices of swing data entries
     def UpdateIndex(self, update_enum=True):
         self.count = len(self.data)
         if self.count > 0:
@@ -1285,6 +1290,7 @@ class SwingSceneData(bpy.types.PropertyGroup):
                 prc.index = i
             self.index = str(max(0, min(len(self.data), int(self.index if self.index else self.count-1))))
     
+    # Updates labels from CSV file
     def UpdateLabels(self, path):
         with open(path, 'r') as csvfile:
             csvreader = csv.reader(csvfile)
@@ -1710,6 +1716,12 @@ class SWINGULT_UL_SwingData_CollisionStruct(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         r = layout.row(align=1)
         r.label(text='[%d] %s' % (index, item.name))
+        r = r.row()
+        r.scale_x = 0.9
+        if item.type == 'CAPSULE':
+            r.label(text="| %s - %s" % (item.start_bonename, item.end_bonename))
+        else:
+            r.label(text=item.bonename, icon='BONE_DATA')
 classlist.append(SWINGULT_UL_SwingData_CollisionStruct)
 
 # --------------------------------------------------------------------------
@@ -1907,10 +1919,6 @@ class SWINGULT_PT_SwingData_3DView_SwingBone_Params(bpy.types.Panel):
         swingbone = prc.GetStructActive('BONE')
         
         if swingbone:
-            r = col.row(align=1)
-            r.operator('swingult.swing_bone_params_add', text="New Params", icon='ADD')
-            r.operator('swingult.swing_bone_params_remove', text="Remove Active", icon='REMOVE')
-            
             if swingbone.params:
                 self.bl_label = SUBPANELLABELSPACE + "Params (%d)" % len(swingbone.params)
                 
@@ -1921,6 +1929,9 @@ class SWINGULT_PT_SwingData_3DView_SwingBone_Params(bpy.types.Panel):
                     "SWINGULT_UL_SwingData_SwingBone_Params", "", swingbone, "params", swingbone, "index_param", rows=3)
                 
                 c = r.column(align=1)
+                c.operator('swingult.swing_bone_params_add', text="", icon='ADD')
+                c.operator('swingult.swing_bone_params_remove', text="", icon='REMOVE')
+                c.separator()
                 c.operator('swingult.swing_bone_params_move', text="", icon='TRIA_UP').direction = 'UP'
                 c.operator('swingult.swing_bone_params_move', text="", icon='TRIA_DOWN').direction = 'DOWN'
                 
