@@ -482,10 +482,18 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
             structlist.move(structindex, newindex)
             self.index_param = newindex
     
+    def ClearParams(self):
+        for i in range(0, len(self.params)):
+            self.params.remove(0)
+        self.index_param = 0
+    
     def GetParamsActive(self):
         return self.params[self.index_param]
     
     def CopyFromOther(self, other):
+        if self == other:
+            return self
+        
         self.name = other.name
         self.start_bonename = other.start_bonename
         self.end_bonename = other.end_bonename
@@ -499,9 +507,7 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
         self.curverotatex = other.curverotatex
         self.unknown_0x0f7316a113 = other.unknown_0x0f7316a113
         
-        print(other.Serialize())
-        
-        print("Swing Copy")
+        return self
     
     def Serialize(self, tabs=0, index=0):
         out = ""
@@ -880,15 +886,23 @@ class SwingData(bpy.types.PropertyGroup):
             structlist.move(structindex, newindex)
             self.SetStructActiveIndex(type, newindex)
     
-    # Clears struct list of type
-    def ClearStructList(self, type):
-        self.GetStructList(type).clear()
-        self.Update()
-    
-    # Clears all data from all lists
-    def Clear(self):
-        for type in STRUCTTYPENAMES:
-            self.ClearStructList(type)
+    # Copies the parameters of one swing bone struct to another
+    def CopyBoneParams(self, bonenamesource, bonenamedest):
+        b1 = self.FindStruct('BONE', bonenamesource)
+        b2 = self.FindStruct('BONE', bonenamedest)
+        if not b1:
+            print("CopyBoneParams: bone \"%s\" not found" % bonenamesource)
+            return False
+        if not b2:
+            print("CopyBoneParams: bone \"%s\" not found" % bonenamedest)
+            return False
+        if b1 == b2:
+            return True
+        
+        b2.ClearParams()
+        for p in b1.params:
+            b2.AddParams().CopyFromOther(p)
+        return True
     
     # Creates visual objects for collision shapes (BETA)
     def CreateVisuals(self, armatureobject):
@@ -992,9 +1006,12 @@ class SwingData(bpy.types.PropertyGroup):
                     self.AddStruct(othershape.type).CopyFromOther(othershape)
                     print('> New Shape "%s" [%s]' % (othershape.name, othershape.type))
         
+        # Create new swing bone with name
         if swingname not in [x.name for x in self.GetStructList('BONE')]:
             b = self.AddStruct('BONE')
             b.name = swingname
+        
+        # Copy parameters
         [x for x in self.GetStructList('BONE') if x.name == swingname][0].CopyFromOther(otherswing)
     
     # Adds connection and transfers relevant data from other connection
@@ -1050,55 +1067,6 @@ class SwingData(bpy.types.PropertyGroup):
         out += '</struct>\n'
         
         return out
-    
-    # Removes unused data from PRC
-    def Clean(self, armatureobject):
-        print('> Cleaning PRC "%s" ---------' % self.name)
-        
-        bonenameslower = [b.name.lower() for b in armatureobject.data.bones]
-        
-        # Shapes
-        for entry in [x for x in self.GetStructList('SPHERE') if x.bonename not in bonenameslower][::-1]:
-            print("> Removing %s %s" % (entry.type, entry.name))
-            self.RemoveStructEntry(entry)
-        
-        for entry in [x for x in self.GetStructList('OVAL') if x.bonename not in bonenameslower][::-1]:
-            print("> Removing %s %s" % (entry.type, entry.name))
-            self.RemoveStructEntry(entry)
-        
-        for entry in [x for x in self.GetStructList('ELLIPSOID') if x.bonename not in bonenameslower][::-1]:
-            print("> Removing %s %s" % (entry.type, entry.name))
-            self.RemoveStructEntry(entry)
-        
-        for entry in [x for x in self.GetStructList('PLANE') if x.bonename not in bonenameslower][::-1]:
-            print("> Removing %s %s" % (entry.type, entry.name))
-            self.RemoveStructEntry(entry)
-        
-        for entry in [x for x in self.GetStructList('CAPSULE') if (x.start_bonename not in bonenameslower or x.end_bonename not in bonenameslower)][::-1]:
-            print("> Removing %s %s" % (entry.type, entry.name))
-            self.RemoveStructEntry(entry)
-        
-        self.Update()
-        
-        # Groups
-        shapenames = [x.name for x in self.GetShapeList()] + [""]
-        
-        for groupindex, group in list(enumerate(self.GetStructList('GROUP')))[::-1]:
-            for i, entry in list(enumerate(group.data))[::-1]:
-                if entry.hash40 not in shapenames:
-                    print('> Removing "%s" from group "%s"' % (entry.hash40, group.name))
-                    group.Remove(i)
-            if len(group.data) == 0:
-                print("> Removing %s %s" % ('GROUP', group.name))
-                self.RemoveStruct('GROUP', groupindex)
-        
-        # Params
-        for swingbone in self.GetStructList('BONE'):
-            for paramindex, params in enumerate(swingbone.params):
-                for i,c in list(enumerate(params.collisions))[::-1]:
-                    if c.hash40 not in shapenames:
-                        print('> Removing "%s" from params[%d] of Swing Bone "%s"' % (c.hash40, paramindex, swingbone.name))
-                        params.RemoveCollision(i)
     
     # Checks all hashes against labels
     def Validate(self):
@@ -1199,6 +1167,65 @@ class SwingData(bpy.types.PropertyGroup):
             print(c)
         
         return conflicts
+    
+    # Removes unused data from PRC
+    def Clean(self, armatureobject):
+        print('> Cleaning PRC "%s" ---------' % self.name)
+        
+        bonenameslower = [b.name.lower() for b in armatureobject.data.bones]
+        
+        # Shapes
+        for entry in [x for x in self.GetStructList('SPHERE') if x.bonename not in bonenameslower][::-1]:
+            print("> Removing %s %s" % (entry.type, entry.name))
+            self.RemoveStructEntry(entry)
+        
+        for entry in [x for x in self.GetStructList('OVAL') if x.bonename not in bonenameslower][::-1]:
+            print("> Removing %s %s" % (entry.type, entry.name))
+            self.RemoveStructEntry(entry)
+        
+        for entry in [x for x in self.GetStructList('ELLIPSOID') if x.bonename not in bonenameslower][::-1]:
+            print("> Removing %s %s" % (entry.type, entry.name))
+            self.RemoveStructEntry(entry)
+        
+        for entry in [x for x in self.GetStructList('PLANE') if x.bonename not in bonenameslower][::-1]:
+            print("> Removing %s %s" % (entry.type, entry.name))
+            self.RemoveStructEntry(entry)
+        
+        for entry in [x for x in self.GetStructList('CAPSULE') if (x.start_bonename not in bonenameslower or x.end_bonename not in bonenameslower)][::-1]:
+            print("> Removing %s %s" % (entry.type, entry.name))
+            self.RemoveStructEntry(entry)
+        
+        self.Update()
+        
+        # Groups
+        shapenames = [x.name for x in self.GetShapeList()] + [""]
+        
+        for groupindex, group in list(enumerate(self.GetStructList('GROUP')))[::-1]:
+            for i, entry in list(enumerate(group.data))[::-1]:
+                if entry.hash40 not in shapenames:
+                    print('> Removing "%s" from group "%s"' % (entry.hash40, group.name))
+                    group.Remove(i)
+            if len(group.data) == 0:
+                print("> Removing %s %s" % ('GROUP', group.name))
+                self.RemoveStruct('GROUP', groupindex)
+        
+        # Params
+        for swingbone in self.GetStructList('BONE'):
+            for paramindex, params in enumerate(swingbone.params):
+                for i,c in list(enumerate(params.collisions))[::-1]:
+                    if c.hash40 not in shapenames:
+                        print('> Removing "%s" from params[%d] of Swing Bone "%s"' % (c.hash40, paramindex, swingbone.name))
+                        params.RemoveCollision(i)
+    
+    # Clears struct list of type
+    def ClearStructList(self, type):
+        self.GetStructList(type).clear()
+        self.Update()
+    
+    # Clears all data from all lists
+    def Clear(self):
+        for type in STRUCTTYPENAMES:
+            self.ClearStructList(type)
 classlist.append(SwingData)
 
 class SwingSceneData(bpy.types.PropertyGroup):
