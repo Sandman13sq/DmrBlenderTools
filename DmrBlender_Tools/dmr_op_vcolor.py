@@ -38,26 +38,52 @@ def PickColorFromObject(obj, use_render_layer=False):
     if not mesh.vertex_colors:
         return None
     
-    vcolors = GetActiveVCLayer(mesh, use_render_layer).data
+    vclayer = GetActiveVCLayer(mesh, use_render_layer)
+    vcolors = vclayer.data
     
-    targetloops = GetTargetLoops(mesh)
-    
-    if len(targetloops) == 0:
-        return None
+    # Blender 3.2
+    if bpy.app.version >= (3, 2, 2):
+        targetloops = GetTargetLoops(mesh) if vclayer.domain not in ['POINT', 'EDGE'] else tuple([v for v in mesh.vertices if v.select])
+        
+        if len(targetloops) == 0:
+            return None
+        else:
+            netcolor = [0.0, 0.0, 0.0, 0.0]
+            netcount = len(targetloops)
+            
+            for l in targetloops:
+                color = vcolors[l.index].color
+                netcolor[0] += color[0]
+                netcolor[1] += color[1]
+                netcolor[2] += color[2]
+                netcolor[3] += color[3]
+            
+            netcolor[0] /= netcount
+            netcolor[1] /= netcount
+            netcolor[2] /= netcount
+            netcolor[3] /= netcount
+    # < 3.2
     else:
-        netcolor = [0.0, 0.0, 0.0, 0.0]
-        netcount = len(targetloops)
-        for l in targetloops:
-            color = vcolors[l.index].color
-            netcolor[0] += color[0]
-            netcolor[1] += color[1]
-            netcolor[2] += color[2]
-            netcolor[3] += color[3]
-        netcolor[0] /= netcount
-        netcolor[1] /= netcount
-        netcolor[2] /= netcount
-        netcolor[3] /= netcount
-    
+        targetloops = GetTargetLoops(mesh, False, vclayer.domain in ['POINT', 'EDGE'])
+        
+        if len(targetloops) == 0:
+            return None
+        else:
+            netcolor = [0.0, 0.0, 0.0, 0.0]
+            netcount = len(targetloops)
+            
+            for l in targetloops:
+                color = vcolors[l.index].color
+                netcolor[0] += color[0]
+                netcolor[1] += color[1]
+                netcolor[2] += color[2]
+                netcolor[3] += color[3]
+            
+            netcolor[0] /= netcount
+            netcolor[1] /= netcount
+            netcolor[2] /= netcount
+            netcolor[3] /= netcount
+        
     return netcolor
 
 # =============================================================================
@@ -675,6 +701,50 @@ bpy.utils.register_class(DMR_OP_VertexColorMove)
 
 # =============================================================================
 
+class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
+    bl_label = "Gamma Correct Vertex Colors"
+    bl_idname = 'dmr.vc_gamma_correct'
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    revert : bpy.props.BoolProperty(name="Revert Correction", default=False)
+    
+    use_vertices : bpy.props.BoolProperty(
+        name="Use Vertices", default=False,
+        description='Change using vertices instead of faces.',
+    )
+    
+    def execute(self, context):
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        exponent = 2.2 if not self.revert else 0.4545
+        
+        for obj in [x for x in context.selected_objects] + [context.object]:
+            if obj.type != 'MESH': 
+                continue
+            
+            mesh = obj.data
+            vcolors = GetActiveVCLayer(mesh).data
+            
+            targetpolys = [poly for poly in mesh.polygons if poly.select]
+            targetloops = GetTargetLoops(mesh, self.use_vertices)
+            
+            # Set colors
+            if not self.revert:
+                for l in targetloops:
+                    vcolors[l.index].color[:3] = mathutils.Color(vcolors[l.index].color[:3]).from_scene_linear_to_srgb()
+            else:
+                for l in targetloops:
+                    vcolors[l.index].color[:3] = mathutils.Color(vcolors[l.index].color[:3]).from_srgb_to_scene_linear()
+            
+        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+        return {'FINISHED'}
+classlist.append(DMR_OP_VertexColorGammaCorrect)
+
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
@@ -685,3 +755,4 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+
