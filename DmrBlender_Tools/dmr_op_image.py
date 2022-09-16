@@ -99,8 +99,8 @@ class DMR_OT_ComposeImageValues(bpy.types.Operator):
             return {'FINISHED'}
         
         image = blender_images[self.image]
-        image.colorspace_settings.name = 'Linear'
-        image.alpha_mode = 'STRAIGHT'
+        #image.colorspace_settings.name = 'Linear'
+        #image.alpha_mode = 'STRAIGHT'
         
         channels = self.channels # Bool vector of enabled channels
         
