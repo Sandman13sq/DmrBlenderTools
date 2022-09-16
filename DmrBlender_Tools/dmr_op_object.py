@@ -174,16 +174,29 @@ class DMR_OP_SyncVCLayers(bpy.types.Operator):
     
     def execute(self, context):
         active = context.active_object
-        selectname = active.data.vertex_colors.active.name
-        rendername = [x for x in active.data.vertex_colors if x.active_render][0].name
+        
+        if bpy.app.version >= (3, 2, 2):
+            selectname = active.data.color_attributes.active_color.name
+            rendername = active.data.color_attributes.active.name
+        else:
+            selectname = active.data.vertex_colors.active.name
+            rendername = [x for x in active.data.vertex_colors if x.active_render][0].name
         
         for obj in context.selected_objects:
-            if obj.type == 'MESH' and obj.data.vertex_colors:
-                vcolors = obj.data.vertex_colors
-                if rendername in [x.name for x in vcolors]:
-                    vcolors[rendername].active_render = True
-                if selectname in [x.name for x in vcolors]:
-                    vcolors.active = vcolors[selectname]
+            if obj.type == 'MESH':
+                mesh = obj.data
+                if bpy.app.version >= (3, 2, 2):
+                    vcolors = mesh.color_attributes
+                    if rendername in [x.name for x in vcolors]:
+                        vcolors.active = vcolors[rendername]
+                    if selectname in [x.name for x in vcolors]:
+                        vcolors.active_color = vcolors[selectname]
+                else:
+                    vcolors = obj.data.vertex_colors
+                    if rendername in [x.name for x in vcolors]:
+                        vcolors[rendername].active_render = True
+                    if selectname in [x.name for x in vcolors]:
+                        vcolors.active = vcolors[selectname]
         
         return {'FINISHED'}
 classlist.append(DMR_OP_SyncVCLayers)
