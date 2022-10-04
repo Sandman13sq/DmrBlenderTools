@@ -116,9 +116,15 @@ class SKSNAP_OP_Snapshot_Apply(ShapeKey_OP): # -------------------------------
     bl_label = "Write Shape Key Snapshot"
     
     index : bpy.props.IntProperty()
+    clear : bpy.props.BoolProperty(name="Clear Other Keys", default=True)
     
     def execute(self, context):
         mesh = context.object.data
+        
+        if self.clear:
+            for sk in mesh.shape_keys.key_blocks:
+                sk.value = 0.0
+        
         mesh.shape_key_snapshots[self.index].ToMesh(mesh)
         return {'FINISHED'}
 classlist.append(SKSNAP_OP_Snapshot_Apply)
@@ -229,6 +235,9 @@ classlist.append(SKSNAP_PT_ShapeKeySnapshot)
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
+    
+    bpy.types.Curve.shape_key_snapshots = bpy.props.CollectionProperty(name='Shape Key Snapshots', type=ShapeKeySnapshot)
+    bpy.types.Curve.shape_key_snapshots_index = bpy.props.IntProperty(name='Shape Key Snapshot Index', default=0)
     
     bpy.types.Mesh.shape_key_snapshots = bpy.props.CollectionProperty(name='Shape Key Snapshots', type=ShapeKeySnapshot)
     bpy.types.Mesh.shape_key_snapshots_index = bpy.props.IntProperty(name='Shape Key Snapshot Index', default=0)
