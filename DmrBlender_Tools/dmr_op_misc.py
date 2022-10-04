@@ -311,6 +311,42 @@ classlist.append(DMR_OP_RemovePalette)
 
 # =============================================================================
 
+class DMR_OP_FlipUVsAlongAnchor(bpy.types.Operator):
+    """Flips selected UVs along anchor"""
+    bl_idname = "dmr.flip_uvs_along_anchor"
+    bl_label = "Flips UVs Along Anchor"
+    bl_options = {'REGISTER', 'UNDO'}   
+    
+    anchor : bpy.props.EnumProperty(name="Side", items = (
+        ('LEFT', "Left", "Flip over left side"),
+        ('RIGHT', "Right", "Flip over right side")
+    ))
+    
+    def execute(self, context):
+        mode = context.active_object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        for obj in [x for x in bpy.context.selected_objects if x.type == 'MESH']:
+            if not obj.data.uv_layers:
+                continue
+            uvlayer = obj.data.uv_layers.active
+            selectedloops = [i for p in obj.data.polygons if p.select for i in p.loop_indices]
+            targetloops = tuple([l for i,l in enumerate(uvlayer.data) if (l.select and i in selectedloops)])
+            
+            if self.anchor == 'LEFT':
+                point = min([l.uv[0] for l in targetloops if l.uv[0] != 0.0])
+                for l in targetloops:
+                    l.uv[0] = point-(l.uv[0]-point)
+            
+            elif self.anchor == 'RIGHT':
+                point = max([l.uv[0] for l in targetloops if l.uv[0] != 0.0])
+                for l in targetloops:
+                    l.uv[0] = point-(l.uv[0]-point)
+        
+        bpy.ops.object.mode_set(mode=mode)
+        return {'FINISHED'}
+classlist.append(DMR_OP_FlipUVsAlongAnchor)
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
