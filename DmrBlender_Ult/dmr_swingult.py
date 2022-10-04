@@ -1226,6 +1226,56 @@ class SwingData(bpy.types.PropertyGroup):
     def Clear(self):
         for type in STRUCTTYPENAMES:
             self.ClearStructList(type)
+    
+    # Print all locations of given string
+    def PrintReferences(self, name):
+        print("=== References of \"%s\" in %s ===" % (name, self.name))
+        for bi, b in enumerate(self.GetStructList('BONE')):
+            if b.name == name:
+                print("[BONE][%d %s].name: %s" % (bi, b.name, name))
+            if b.start_bonename == name:
+                print("[BONE][%d %s].start_bonename = %s" % (bi, b.name, name))
+            if b.end_bonename == name:
+                print("[BONE][%d %s].end_bonename = %s" % (bi, b.name, name))
+            for pi, p in enumerate(b.params):
+                for ci, c in enumerate(p.collisions):
+                    if c.hash40 == name:
+                        print("[BONE][%d %s].params[%d].collisions[%d].hash40 = %s" % (bi, b.name, pi, ci, name))
+        
+        for structtype in "SPHERE PLANE ELLIPSOID".split():
+            for si, s in enumerate(self.GetStructList(structtype)):
+                if s.name == name:
+                    print("[%s][%d %s].name = %s" % (structtype, si, s.name, name))
+                if s.bonename == name:
+                    print("[%s][%d %s].bonename = %s" % (structtype, si, s.name, name))
+        
+        for si, s in enumerate(self.GetStructList('CAPSULE')):
+            if s.name == name:
+                print("[%s][%d %s].name = %s" % ('CAPSULE', si, s.name, name))
+            if b.start_bonename == name:
+                print("[%s][%d %s].start_bonename = %s" % ('CAPSULE', si, s.name, name))
+            if b.end_bonename == name:
+                print("[%s][%d %s].end_bonename = %s" % ('CAPSULE', si, s.name, name))
+        
+        print()
+    
+    # Generate collision groups from bones
+    def GenerateCollisionGroups(self):
+        self.ClearStructList('GROUP')
+        
+        for b in self.GetStructList('BONE'):
+            for i, p in enumerate(b.params):
+                group = self.AddStruct('GROUP')
+                group.name = (
+                    b.start_bonename if b.start_bonename == b.end_bonename else
+                    b.start_bonename[:-1] + str(i+1)
+                ) + "col"
+                print("> Group \"%s\"" % group.name)
+                for c in p.collisions:
+                    if c.hash40:
+                        group.Add(c.hash40)
+                # 33
+        
 classlist.append(SwingData)
 
 class SwingSceneData(bpy.types.PropertyGroup):
@@ -1704,6 +1754,23 @@ class SWINGULT_OP_Connection_Transfer_Pattern(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_Connection_Transfer_Pattern)
 
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_SwingData_PrintReferences(bpy.types.Operator): 
+    bl_idname = "swingult.print_references"
+    bl_label = "Print String References"
+    bl_description = "Prints all instances of given string in swing data"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    name : bpy.props.StringProperty(name="String", default="s_hair")
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def execute(self, context):
+        context.scene.swing_ultimate.GetActiveData().PrintReferences(self.name)
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_SwingData_PrintReferences)
+
 "================================================================================================"
 "LAYOUT"
 "================================================================================================"
@@ -1824,6 +1891,8 @@ class SWINGULT_PT_SwingData_3DView(bpy.types.Panel):
             r = col.row()
             #r.operator('swingult.clean', icon='FILE_REFRESH', text="Clean")
             r.operator('swingult.validate', icon='LINENUMBERS_ON', text="Validate")
+            r.operator('swingult.print_references', icon='ZOOM_ALL', text="Find References")
+            
 classlist.append(SWINGULT_PT_SwingData_3DView)
 
 "========================================================================================================="
