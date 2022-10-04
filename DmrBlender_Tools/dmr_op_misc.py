@@ -347,6 +347,31 @@ class DMR_OP_FlipUVsAlongAnchor(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_FlipUVsAlongAnchor)
 
+# =============================================================================
+
+class DMR_OP_SetTextFromDialog(bpy.types.Operator):
+    bl_idname = "dmr.set_text_from_dialog"
+    bl_label = "Set Text From Dialog"
+    bl_description = "Sets text from invoke window"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    text : bpy.props.StringProperty(name="Text")
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'FONT'
+    
+    def invoke(self, context, event):
+        self.text = context.object.data.body
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def execute(self, context):
+        context.object.data.body = self.text
+        return {'FINISHED'}
+classlist.append(DMR_OP_SetTextFromDialog)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
