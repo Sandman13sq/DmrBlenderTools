@@ -139,6 +139,71 @@ classlist.append(DMR_OT_ComposeImageValues)
 
 # =============================================================================
 
+class DMR_OT_MergeImagesByMask(bpy.types.Operator):
+    """Compose a value map image from existing images"""
+    bl_idname = "dmr.merge_images_by_mask"
+    bl_label = "Merge Image by Mask"
+    
+    ImageProp = lambda i: bpy.props.EnumProperty(name='Source', default=0, items=Items_Images,
+        description='Image to sample values from')
+    
+    image0 : bpy.props.EnumProperty(name='Image 0', default=0, items=Items_Images,
+        description='Base image. When mask is 0, this image is visible')
+    
+    image1 : bpy.props.EnumProperty(name='Image 1', default=0, items=Items_Images,
+        description='Applied image. When mask is 1, this image is visible')
+    
+    mask : bpy.props.EnumProperty(name='Mask', default=0, items=Items_Images,
+        description='Mask image for transition')
+    
+    out : bpy.props.EnumProperty(name='Destination', default=0, items=Items_Images,
+        description='Image to write to')
+    
+    # ---------------------------------------------------------
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    # ---------------------------------------------------------
+    
+    def execute(self, context):
+        blender_images = bpy.data.images
+        
+        image0 = blender_images[self.image0]
+        image1 = blender_images[self.image1]
+        maskimage = blender_images[self.mask]
+        outimage = blender_images[self.out]
+        
+        image1.scale(image0.size[0], image0.size[1])
+        maskimage.scale(image0.size[0], image0.size[1])
+        outimage.scale(image0.size[0], image0.size[1])
+        
+        pixels0 = tuple(image0.pixels)
+        pixels1 = tuple(image1.pixels)
+        mask = tuple(maskimage.pixels)
+        
+        print('> Writing...')
+        
+        print(image0.size[:])
+        print(image1.size[:])
+        print(maskimage.size[:])
+        print(outimage.size[:])
+        
+        maskc = maskimage.channels
+        
+        n = outimage.size[0] * outimage.size[1] * outimage.channels
+        outimage.pixels = tuple(
+            pixels0[i]*(1.0-mask[(i//maskc)*maskc]) + pixels1[i]*(mask[(i//maskc)*maskc])
+            for i in range(0, n)
+        )
+        
+        self.report({'INFO'}, "Composition Complete")
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_MergeImagesByMask)
+
+# =============================================================================
+
 class DMR_OT_NormalizeBWImage(bpy.types.Operator):
     """Normalize Image Values to 0-1 range"""
     bl_idname = "dmr.normalize_image"
