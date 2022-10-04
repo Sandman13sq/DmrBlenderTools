@@ -70,7 +70,6 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel): # ----------------------------
         if isediting:
             row = layout.row()
             row.operator("dmr.remove_from_selected_bones", icon='BONE_DATA', text="Remove From Bones")
-
 classlist.append(DMR_PT_3DViewVertexGroups)
 
 # =============================================================================

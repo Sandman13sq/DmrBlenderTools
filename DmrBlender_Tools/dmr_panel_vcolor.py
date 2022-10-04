@@ -200,7 +200,7 @@ def register():
         bpy.utils.register_class(c)
     
     bpy.types.Scene.editmodecolor = bpy.props.FloatVectorProperty(
-        name="Paint Color", subtype="COLOR_GAMMA", size=4, min=0.0, max=1.0,
+        name="Paint Color", subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", size=4, min=0.0, max=1.0,
         default=(1.0, 1.0, 1.0, 1.0)
     )
     

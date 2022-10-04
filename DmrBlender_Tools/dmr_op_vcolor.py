@@ -64,7 +64,7 @@ def PickColorFromObject(obj, use_render_layer=False):
             netcolor[3] /= netcount
     # < 3.2
     else:
-        targetloops = GetTargetLoops(mesh, False, vclayer.domain in ['POINT', 'EDGE'])
+        targetloops = GetTargetLoops(mesh, False)
         
         if len(targetloops) == 0:
             return None
@@ -339,6 +339,11 @@ class DMR_OP_SetVertexColorChannel(bpy.types.Operator):
         default=1.0
     )
     
+    use_vertices : bpy.props.BoolProperty(
+        name="Use Vertices", default=False,
+        description='Change using vertices instead of faces.',
+    )
+    
     def invoke(self, context, event):
         return self.execute(context)
     
@@ -355,7 +360,7 @@ class DMR_OP_SetVertexColorChannel(bpy.types.Operator):
                 mesh.vertex_colors.new()
             vcolors = GetActiveVCLayer(mesh).data
             
-            for l in GetTargetLoops(mesh):
+            for l in GetTargetLoops(mesh, self.use_vertices):
                 vcolors[l.index].color[self.channelindex] = self.channelvalue
         
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
@@ -708,6 +713,7 @@ class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     revert : bpy.props.BoolProperty(name="Revert Correction", default=False)
+    selectedonly : bpy.props.BoolProperty(name="Selected Only", default=False)
     
     use_vertices : bpy.props.BoolProperty(
         name="Use Vertices", default=False,
@@ -726,9 +732,14 @@ class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
             
             mesh = obj.data
             vcolors = GetActiveVCLayer(mesh).data
+            print(GetActiveVCLayer(mesh))
             
-            targetpolys = [poly for poly in mesh.polygons if poly.select]
-            targetloops = GetTargetLoops(mesh, self.use_vertices)
+            #targetpolys = [poly for poly in mesh.polygons if poly.select]
+            
+            if self.selectedonly:
+                targetloops = GetTargetLoops(mesh, self.use_vertices)
+            else:
+                targetloops = tuple(mesh.loops)
             
             # Set colors
             if not self.revert:

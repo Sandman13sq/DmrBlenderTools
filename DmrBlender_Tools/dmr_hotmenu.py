@@ -33,7 +33,14 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
         
         row.column().operator('dmr.image_reload', icon = 'IMAGE_DATA', text = '')
         
-        row.column().operator('dmr.toggle_mirror_modifier', icon = 'MOD_MIRROR', text = '')
+        r = row.column(align=1).row(align=1)
+        r.column().operator('dmr.toggle_mirror_modifier', icon = 'MOD_MIRROR', text = '')
+        if obj:
+            if obj.mode == 'EDIT':
+                if obj.type == 'MESH':
+                    m = ([None]+[m for m in obj.modifiers if m.type == 'MIRROR'])[-1]
+                    if m:
+                        r.prop(m, 'use_clip', text="", icon='NODE_SIDE')
         
         row = layout.row(align = 1)
         row.scale_x = 4.0
