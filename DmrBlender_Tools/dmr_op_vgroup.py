@@ -374,7 +374,7 @@ classlist.append(DMR_OP_MoveVertexGroupToEnd)
 class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
     bl_label = "Fix Vertex Group Sides"
     bl_idname = 'dmr.fix_vertex_group_sides'
-    bl_description = 'Sets the side suffix (.l, .r) for selected vertices'
+    bl_description = 'Sets the side suffix (.l, .r) of vertex groups for selected vertices'
     bl_options = {'REGISTER', 'UNDO'}
     
     method : bpy.props.EnumProperty(
@@ -384,6 +384,7 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
             ('FLIP', 'Flip Sides', 'Flips mirrored vertex group sides'),
             ('LEFT', 'Force Left', 'Forces vertex groups to the left side'),
             ('RIGHT', 'Force Right', 'Forces vertex groups to the right side'),
+            ('BOTH', 'Both Sides', 'Ensures vertices have weights for both sides'),
             ),
         default='FLIP'
         )
@@ -395,23 +396,14 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
         
         method = self.method
         
-        oppositestr = {
-            '.l': '.r', 
-            '.r': '.l',
-            '.L': '.R',
-            '.R': '.L',
-            '_l': '_r', 
-            '_r': '_l',
-            '_L': '_R',
-            '_R': '_L'
-        }
+        oppositestr = {h+k: h+v for h in "._" for k,v in zip("lrLR", "rlRL")}
         
         for obj in context.selected_objects:
             if obj.type == 'MESH':
                 vgroups = obj.vertex_groups
                 
                 # Find groups to fix
-                if method == 'FLIP': # All groups with a mirror suffix
+                if method == 'FLIP' or method == 'BOTH': # All groups with a mirror suffix
                     targetgroups = {
                         vg.index: vg for vg in vgroups if sum([vg.name[-2:]==s for s in oppositestr.keys()])
                     }
@@ -456,8 +448,13 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
                                 else:
                                     g1.remove([v.index])
                                     g2.add([v.index], w1, 'REPLACE')
-                                
-                                #print([g1.name, g2.name])
+                            # Both sides
+                            elif method == 'BOTH':
+                                # Vertex has entry with opposite group
+                                vge2 = ([vge for vge in v.groups if vge.group == g2.index]+[None])[0]
+                                if vge2 == None:
+                                    g2.add([v.index], w1, 'REPLACE')
+                            
                             # Force Right/Left
                             elif method == 'RIGHT' or method == 'LEFT':
                                 g1.remove([v.index])
