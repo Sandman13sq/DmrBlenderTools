@@ -373,7 +373,7 @@ class SwingData_Swing_Bone_Params(bpy.types.PropertyGroup): # ------------------
         
         # Game Crashes at 0 Collisions
         if len(self.collisions) == 0:
-            print("> %s has 0 Collisions!" % params)
+            print("> %s has 0 Collisions!" % "Params")
         
         self.index_collision = max(0, min(self.index_collision, len(self.collisions)-1))
     
@@ -1028,7 +1028,7 @@ class SwingData(bpy.types.PropertyGroup):
             connection.CopyFromOther(otherconnection)
             print("> New Connection (%s -> %s)" % (connection.start_bonename, connection.end_bonename))
         else:
-            print("> Connection Exists (%s -> %s)" % (connection.start_bonename, connection.end_bonename))
+            print("> Connection Exists (%s -> %s)" % (otherconnection.start_bonename, otherconnection.end_bonename))
     
     # Adds connections from other swing data if the given string is in the other connection
     def TransferConnectionPattern(self, other, pattern_string, check_start=True, check_end=False):
@@ -1771,6 +1771,18 @@ class SWINGULT_OP_SwingData_PrintReferences(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_SwingData_PrintReferences)
 
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_SwingData_GenerateCollisionGroups(bpy.types.Operator): 
+    bl_idname = "swingult.generate_collision_groups"
+    bl_label = "Generate Collision Groups"
+    bl_description = "Prints all instances of given string in swing data"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        context.scene.swing_ultimate.GetActiveData().GenerateCollisionGroups()
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_SwingData_GenerateCollisionGroups)
+
 "================================================================================================"
 "LAYOUT"
 "================================================================================================"
@@ -1893,6 +1905,7 @@ class SWINGULT_PT_SwingData_3DView(bpy.types.Panel):
             r.operator('swingult.validate', icon='LINENUMBERS_ON', text="Validate")
             r.operator('swingult.print_references', icon='ZOOM_ALL', text="Find References")
             
+            col.operator('swingult.generate_collision_groups', icon='SYSTEM', text="Generate Collision Groups")
 classlist.append(SWINGULT_PT_SwingData_3DView)
 
 "========================================================================================================="
