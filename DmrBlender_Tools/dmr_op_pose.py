@@ -488,8 +488,135 @@ class DMR_OP_BoneGroupIsolate_Active(bpy.types.Operator):
         obj.pose.bone_groups.active = obj.pose.bones[obj.data.bones.active.name].bone_group
         bpy.ops.dmr.bone_group_isolate(group_name=obj.pose.bone_groups.active.name if obj.pose.bone_groups.active else "")
         return {'FINISHED'}
-    
 classlist.append(DMR_OP_BoneGroupIsolate_Active)
+
+# =============================================================================
+
+class DMR_OP_CreateMirroredKeyframes(bpy.types.Operator):
+    bl_label = "Create Mirrored Keyframes"
+    bl_idname = 'dmr.create_mirrored_keyframes'
+    bl_description = "Creates mirrored keyframes for bones with mirror suffix. \nSelect original first."
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    offset : bpy.props.IntProperty(name="Offset", default=0)
+    #mirror : bpy.props.BoolProperty(name="Flip on X Axis", default=True)
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and obj.data.bones.active
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def execute(self, context):
+        offset = self.offset
+        
+        obj = context.object
+        
+        oppdict = {("."+k): ("."+v) for k,v in zip("LRlr", "RLrl")}
+        oppmap = {
+            pb: obj.pose.bones[name.replace(name[-2:], oppdict[name[-2:]])] 
+            for pb in obj.pose.bones for name in [pb.name] if name[-2:] in oppdict.keys()
+            }
+        
+        transform_index = {"location": 0, "rotation_quaternion": 1, "scale": 2}
+        
+        scene = context.scene
+        vl = context.view_layer
+        tool_settings = scene.tool_settings
+        lastinsertmode = tool_settings.use_keyframe_insert_auto
+        tool_settings.use_keyframe_insert_auto = False
+        
+        action = obj.animation_data.action
+        
+        lastselect = [pb for pb in obj.pose.bones if pb.bone.select]
+        oppbones = [oppmap[pb] for pb in lastselect if (pb in oppmap.keys())]
+        
+        print([x.name for x in lastselect])
+        print([x.name for x in oppbones])
+        
+        bpy.ops.pose.select_all(action='SELECT')
+        
+        posesnap = {}
+        for pb in lastselect + oppbones:
+            pb.bone.select = True
+        
+        framelist = list(set([
+            int(k.co_ui[0]) 
+            for fc in action.fcurves if fc.data_path[fc.data_path.find('"')+1:fc.data_path.rfind('"')] in [x.name for x in lastselect]
+            for k in fc.keyframe_points
+            ]))
+        
+        # Get Transforms
+        for f in framelist:
+            scene.frame_set(f)
+            bpy.ops.pose.copy()
+            bpy.ops.pose.paste(flipped=True, selected_mask=True)
+            vl.update()
+            posesnap[f] = {
+                pb: (
+                    pb.location.copy(),
+                    pb.rotation_quaternion.copy(),
+                    pb.scale.copy()
+                )
+                for pb in oppbones
+            }
+            print((f, pb.rotation_quaternion))
+        
+        # Set keyframes
+        for pb1 in [pb for pb in lastselect if pb in oppmap.keys()]:
+            pb2 = oppmap[pb1]
+            
+            for fc1 in action.fcurves:
+                array_index = fc1.array_index
+                if '"%s"' % pb1.name in fc1.data_path:
+                    datapath2 = fc1.data_path.replace('"%s"' % pb1.name, '"%s"' % pb2.name)
+                    fc2 = action.fcurves.find(datapath2, index=array_index)
+                    if not fc2:
+                        fc2 = action.fcurves.new(datapath2, index=array_index, action_group=pb2.name)
+                    
+                    kpoints1 = fc1.keyframe_points
+                    kpoints2 = fc2.keyframe_points
+                    kpoints2.clear()
+                    
+                    [
+                        kpoints2.insert(
+                            k.co_ui[0]+offset, 
+                            posesnap[int(k.co_ui[0])][pb2][transform_index[datapath2[datapath2.rfind(".")+1:]]][array_index], 
+                            options={'FAST'}
+                            )
+                        for k in kpoints1
+                    ]
+        
+        bpy.ops.pose.select_all(action='DESELECT')
+        for pb in lastselect:
+            pb.bone.select = True
+        return {'FINISHED'}
+classlist.append(DMR_OP_CreateMirroredKeyframes)
+
+# =============================================================================
+
+class DMR_OP_ActionScale(bpy.types.Operator):
+    bl_label = "Isolate Active Bone's Group"
+    bl_idname = 'dmr.scale_action'
+    bl_description = "Isolates active bone's group"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and obj.data.bones.active
+    
+    def execute(self, context):
+        obj = context.object
+        action = obj.animation_data.action
+        for fc in action.fcurves:
+            if ".location" in fc.data_path or ".scale" in fc.data_path:
+                for k in fc.keyframe_points:
+                    k.co_ui[1] *= scale
+        return {'FINISHED'}
+classlist.append(DMR_OP_ActionScale)
 
 # =============================================================================
 
