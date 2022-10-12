@@ -499,7 +499,7 @@ class DMR_OP_CreateMirroredKeyframes(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     offset : bpy.props.IntProperty(name="Offset", default=0)
-    #mirror : bpy.props.BoolProperty(name="Flip on X Axis", default=True)
+    mirror : bpy.props.BoolProperty(name="Flip on X Axis", default=True)
     
     @classmethod
     def poll(self, context):
@@ -552,7 +552,7 @@ class DMR_OP_CreateMirroredKeyframes(bpy.types.Operator):
         for f in framelist:
             scene.frame_set(f)
             bpy.ops.pose.copy()
-            bpy.ops.pose.paste(flipped=True, selected_mask=True)
+            bpy.ops.pose.paste(flipped=self.mirror, selected_mask=True)
             vl.update()
             posesnap[f] = {
                 pb: (
@@ -606,7 +606,7 @@ class DMR_OP_ActionScale(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         obj = context.object
-        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and obj.data.bones.active
+        return obj and obj.mode == 'POSE' and obj.data.bones.active
     
     def execute(self, context):
         obj = context.object
