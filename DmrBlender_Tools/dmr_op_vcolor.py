@@ -262,8 +262,13 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
             
             mesh = obj.data
             # Create color layer if not found
-            if not mesh.vertex_colors:
-                mesh.vertex_colors.new()
+            if bpy.app.version >= (3, 2, 2):
+                if not mesh.color_attributes:
+                    mesh.color_attributes.new("Col", "BYTE_COLOR", 'CORNER')
+            else:
+                if not mesh.vertex_colors:
+                    mesh.vertex_colors.new()
+            
             vcolors = GetActiveVCLayer(mesh).data
             
             targetpolys = [poly for poly in mesh.polygons if poly.select]
