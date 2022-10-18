@@ -41,6 +41,7 @@ classlist = []
 SUBPANELLABELSPACE = "    ^ "
 TABSTRING = "  "
 SMASHUNIT = 0.25
+
 STRUCTTYPENAMES = (
     'BONE', 'SPHERE', 'OVAL', 'ELLIPSOID', 'CAPSULE', 'PLANE', 'CONNECTION', 'GROUP'
 )
@@ -1070,8 +1071,7 @@ class SwingData(bpy.types.PropertyGroup):
     
     # Checks all hashes against labels
     def Validate(self):
-        prc_labels = bpy.context.scene.swing_ultimate.prc_labels
-        labels = [l.name for l in prc_labels]
+        labels = bpy.context.scene.swing_ultimate.prc_labels_string.split()
         
         if len(labels) == 0:
             print("> No labels loaded. Use the \"Update Labels\" button to read ParamLabels.csv")
@@ -1275,7 +1275,6 @@ class SwingData(bpy.types.PropertyGroup):
                     if c.hash40:
                         group.Add(c.hash40)
                 # 33
-        
 classlist.append(SwingData)
 
 class SwingSceneData(bpy.types.PropertyGroup):
@@ -1283,7 +1282,8 @@ class SwingSceneData(bpy.types.PropertyGroup):
     index : bpy.props.EnumProperty(name="Active Swing Data", default=0, items=SwingSceneNames)
     count : bpy.props.IntProperty()
     
-    prc_labels : bpy.props.CollectionProperty(type=SwingData_Label)
+    prc_labels_string : bpy.props.StringProperty(default="")
+    show_search : bpy.props.BoolProperty(name="Show Label Search", default=False)
     
     ui_view_left : bpy.props.EnumProperty(items = (
         ('BONE', "Swing Bone", ""),
@@ -1376,11 +1376,10 @@ class SwingSceneData(bpy.types.PropertyGroup):
             labels = [r for r in csvreader]
             labels.sort(key=lambda x: x[1])
             
-            self.prc_labels.clear()
-            for r in labels:
-                l = self.prc_labels.add()
-                l.hex = r[0]
-                l.name = r[1]
+            self.prc_labels_string = "".join(
+                r[1] + " "
+                for r in labels if sum([1 for x in r[1] if x.upper() in "QWERTYUIOPASDFGHJKLZXCVBNM"])
+            )
         print("> Labels updated")
 classlist.append(SwingSceneData)
 
@@ -1401,6 +1400,17 @@ class SWINGULT_OP_UpdateLabels(bpy.types.Operator, ImportHelper):
         context.scene.swing_ultimate.UpdateLabels(self.filepath)
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_UpdateLabels)
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_RemoveLabels(bpy.types.Operator):
+    """Removes stored labels. (Use if render panel crashes Blender)"""
+    bl_idname = "swingult.clear_labels"
+    bl_label = "Clear Labels"
+    
+    def execute(self, context):
+        context.scene.swing_ultimate.prc_labels_string = ""
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_RemoveLabels)
 
 # ----------------------------------------------------------------------------------------
 class SWINGULT_OP_SwingData_New(bpy.types.Operator):
@@ -1868,8 +1878,10 @@ class SWINGULT_PT_SwingData_Scene(bpy.types.Panel):
             r.operator('swingult.new', icon='ADD', text="")
             r.operator('swingult.remove', icon='REMOVE', text="").index = swing_ultimate.GetActiveIndex()
             
-            r = c.row()
+            r = c.row(align=1)
             r.operator('swingult.update_labels', text="Update Labels")
+            #r.prop(swing_ultimate, 'show_search', text="Show Search", toggle=True)
+            r.operator('swingult.clear_labels', text="", icon='X')
 classlist.append(SWINGULT_PT_SwingData_Scene)
 
 # ---------------------------------------------------------------------------------------
@@ -1999,9 +2011,16 @@ class SWINGULT_PT_SwingData_3DView_SwingBone(StructPanelSuper):
         
         if entry:
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
-            b.prop(entry, 'start_bonename', icon='BONE_DATA')
-            b.prop(entry, 'end_bonename', icon='BONE_DATA')
+            
+            if swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', swing_ultimate, 'prc_labels')
+                #b.prop_search(entry, 'start_bonename', swing_ultimate, 'prc_labels', icon='BONE_DATA')
+                #b.prop_search(entry, 'end_bonename', swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'name')
+                b.prop(entry, 'start_bonename', icon='BONE_DATA')
+                b.prop(entry, 'end_bonename', icon='BONE_DATA')
             
             c = b.column(align=1)
             c.prop(entry, 'isskirt')
@@ -2107,8 +2126,13 @@ class SWINGULT_PT_SwingData_3DView_Spheres(StructPanelSuper):
             DrawStructUIList(self, col, prc, type, "Sphere", 'SWINGULT_UL_SwingData_CollisionStruct', "spheres", "index_sphere")
             
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
-            b.prop(entry, 'bonename', icon='BONE_DATA')
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'name')
+                b.prop(entry, 'bonename', icon='BONE_DATA')
             
             c = b.column(align=1)
             c.prop(entry, 'cx')
@@ -2139,8 +2163,13 @@ class SWINGULT_PT_SwingData_3DView_Ovals(StructPanelSuper):
             DrawStructUIList(self, col, prc, type, "Oval", 'SWINGULT_UL_SwingData_CollisionStruct', "ovals", "index_oval")
             
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
-            b.prop(entry, 'bonename', icon='BONE_DATA')
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'name')
+                b.prop(entry, 'bonename', icon='BONE_DATA')
             
             c = b.column()
             c.prop(entry, 'cx')
@@ -2171,8 +2200,13 @@ class SWINGULT_PT_SwingData_3DView_Ellipsoids(StructPanelSuper):
             DrawStructUIList(self, col, prc, type, "Ellipsoid", 'SWINGULT_UL_SwingData_CollisionStruct', "ellipsoids", "index_ellipsoid")
             
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
-            b.prop(entry, 'bonename', icon='BONE_DATA')
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'name')
+                b.prop(entry, 'bonename', icon='BONE_DATA')
             
             c = b.column(align=1)
             c.prop(entry, 'cx')
@@ -2208,9 +2242,16 @@ class SWINGULT_PT_SwingData_3DView_Capsules(StructPanelSuper):
             DrawStructUIList(self, col, prc, type, "Capsule", 'SWINGULT_UL_SwingData_CollisionStruct', "capsules", "index_capsule")
             
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
-            b.prop(entry, 'start_bonename', icon='BONE_DATA')
-            b.prop(entry, 'end_bonename', icon='BONE_DATA')
+            
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+                #b.prop_search(entry, 'start_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+                #b.prop_search(entry, 'end_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'name')
+                b.prop(entry, 'start_bonename')
+                b.prop(entry, 'end_bonename')
             
             c = b.column(align=1)
             c.prop(entry, 'start_offset_x')
@@ -2245,8 +2286,13 @@ class SWINGULT_PT_SwingData_3DView_Planes(StructPanelSuper):
             DrawStructUIList(self, col, prc, type, "Plane", 'SWINGULT_UL_SwingData_CollisionStruct', "planes", "index_plane")
             
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
-            b.prop(entry, 'bonename', icon='BONE_DATA')
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'name')
+                b.prop(entry, 'bonename', icon='BONE_DATA')
             
             c = b.column(align=1)
             c.prop(entry, 'nx')
@@ -2294,8 +2340,14 @@ class SWINGULT_PT_SwingData_3DView_Connections(StructPanelSuper):
             op.direction = 'DOWN'
             
             b = col.box().column(align=1)
-            b.prop(entry, 'start_bonename', icon='BONE_DATA')
-            b.prop(entry, 'end_bonename', icon='BONE_DATA')
+            
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'start_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+                #b.prop_search(entry, 'end_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
+            else:
+                b.prop(entry, 'start_bonename', icon='BONE_DATA')
+                b.prop(entry, 'end_bonename', icon='BONE_DATA')
             
             c = b.column(align=1)
             c.prop(entry, 'radius')
@@ -2337,7 +2389,11 @@ class SWINGULT_PT_SwingData_3DView_Groups(StructPanelSuper):
             op.direction = 'DOWN'
             
             b = col.box().column(align=1)
-            b.prop(entry, 'name')
+            if context.scene.swing_ultimate.show_search:
+                []
+                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+            else:
+                b.prop(entry, 'name')
             
             activegroup = prc.groups[prc.index_group]
             
