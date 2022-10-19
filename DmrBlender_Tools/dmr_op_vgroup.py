@@ -90,46 +90,13 @@ classlist.append(DMR_OP_ClearWeights)
 
 # =============================================================================
 
-class DMR_OP_CleanWeights(bpy.types.Operator):
-    bl_label = "Clean Weights from Selected"
-    bl_idname = 'dmr.clean_weights_from_selected'
-    bl_description = 'Cleans weights from selected objects'
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        lastobjectmode = bpy.context.active_object.mode
-        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
-        count = 0
-        
-        for obj in context.selected_objects:
-            if obj.type == 'MESH':
-                vertexGroups = obj.vertex_groups
-                
-                # Remove Groups
-                for v in obj.data.vertices:
-                    if v.select:
-                        for g in v.groups:
-                            # Pop vertex from group
-                            if g.weight == 0:
-                                vertexGroups[g.group].remove([v.index])
-                                count += 1
-        
-        self.report({'INFO'}, "Cleaned %s weights" % count)
-        
-        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
-            
-        return {'FINISHED'}
-classlist.append(DMR_OP_CleanWeights)
-
-# =============================================================================
-
 class DMR_OP_RemoveEmptyVertexGroups(bpy.types.Operator):
     bl_label = "Remove Empty Vertex Groups"
     bl_idname = 'dmr.remove_empty_vertex_groups'
     bl_description = 'Removes Vertex Groups with no weight data'
     bl_options = {'REGISTER', 'UNDO'}
     
-    removeZero : bpy.props.BoolProperty(
+    remove_zero : bpy.props.BoolProperty(
         name = "Ignore Zero Weights", default = True,
         description = 'Ignore weights of 0 when checking if groups are empty'
         )
@@ -140,38 +107,35 @@ class DMR_OP_RemoveEmptyVertexGroups(bpy.types.Operator):
     
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "removeZero")
+        layout.prop(self, "remove_zero")
     
     def execute(self, context):
-        for selectedObject in context.selected_objects:
-            if selectedObject.type != 'MESH':
+        for obj in context.selected_objects:
+            if obj.type != 'MESH':
                 continue
                 
             lastobjectmode = bpy.context.active_object.mode
             bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
             
-            vertexGroups = selectedObject.vertex_groups
-            targetGroups = [v for v in vertexGroups]
+            usedgroups = [
+                vge.group
+                for v in obj.data.vertices
+                for vge in v.groups if (
+                    (not self.remove_zero or vge.weight > 0.0)
+                )
+            ]
+            usedgroups += [vg.index for vg in obj.vertex_groups if vg.lock_weight]
+            usedgroups = tuple(set(usedgroups))
             
-            # Find and pop groups with vertex data
-            for v in selectedObject.data.vertices:
-                for g in v.groups:
-                    realGroup = vertexGroups[g.group]
-                    if realGroup in targetGroups:
-                        if g.weight > 0 or not self.removeZero:
-                            targetGroups.remove(realGroup)
-                    
-                if len(targetGroups) == 0:
-                    break
+            hits = [
+                obj.vertex_groups.remove(vg)
+                for vg in list(obj.vertex_groups)[::-1] if vg.index not in usedgroups
+            ]
             
-            # Remove Empty Groups
-            count = len(targetGroups)
-            if count == 0:
+            if len(hits) == 0:
                 self.report({'INFO'}, "No Empty Groups Found")
             else:
-                for g in targetGroups:
-                    vertexGroups.remove(g)
-                self.report({'INFO'}, "Found and removed %d empty group(s)" % count)
+                self.report({'INFO'}, "Found and removed %d empty group(s)" % len(hits))
             
             bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
             
@@ -195,31 +159,12 @@ class DMR_OP_RemoveRightVertexGroups(bpy.types.Operator):
         lastmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT')
         
-        vgroups = obj.vertex_groups
-        groupnames = [x for x in vgroups.keys()]
-        lsuffixes = ['_l', '.l']
-        rsuffixes = ['_r', '.r']
+        rsuffixes = [x+y for x in "._-" for y in "rR"]
+        [
+            obj.vertex_groups.remove(vg)
+            for vg in obj.vertex_groups if (not vg.lock_weight and vg.name[-2:] in rsuffixes)
+        ]
         
-        activegroupname = vgroups[vgroups.active_index]
-        
-        # Check if any mirror groups exists
-        for vg in vgroups:
-            try:
-                name = vg.name # Weird missing byte errer here sometimes
-            except:
-                continue
-            
-            if name[-2:] in lsuffixes:
-                othername = name[0:-1] + 'r'
-                if othername in groupnames:
-                    groupnames.remove(othername)
-                    if vgroups[othername].lock_weight:
-                        continue
-                    vgroups.active_index = vgroups[othername].index
-                    bpy.ops.object.vertex_group_remove(all=False, all_unlocked=False)
-        
-        if activegroupname in groupnames:
-            vgroups.active_index = vgroups[activegroupname].index
         bpy.ops.object.mode_set(mode = lastmode)
         
         return {'FINISHED'}
@@ -298,32 +243,20 @@ class DMR_OP_AddMissingRightVertexGroups(bpy.types.Operator):
             if obj.type != 'MESH':
                 continue
             
-            groupkeys = obj.vertex_groups.keys()
-            index = len( groupkeys )
+            lsuffixes = [x+y for x in "._-" for y in "lL"]
+            rsuffixes = [x+y for x in "._-" for y in "rR"]
             
-            for vg in obj.vertex_groups:
-                newname = ""
-                
-                if vg.name[-2:] in leftmirrorsuffix:
-                    newname = vg.name[:-1] + "r"
-                elif vg.name[-2:] in rightmirrorsuffix:
-                    newname = vg.name[:-1] + "l"
-                    
-                if newname in groupkeys:
-                    continue
-                
-                if newname != "":
-                    obj.vertex_groups.new(name=newname)
-                    index += 1
-                    print("%s -> %s" % (vg.name, newname))
-                    hits += 1
+            hits = [
+                obj.vertex_groups.new( name=vg.name[:-1]+({"l": 'r', "L": "R"}[vg.name[-1]]) )
+                for vg in obj.vertex_groups if (vg.name[-2:] in lsuffixes and vg.name[:-1]+({"l": 'r', "L": "R"}[vg.name[-1]]) not in obj.vertex_groups.keys())
+            ]
         
         bpy.ops.object.mode_set(mode = lastmode)
         
-        if hits == 0:
+        if len(hits) == 0:
             self.report({'INFO'}, "No missing groups found")
         else:
-            self.report({'INFO'}, "%d missing mirror groups added" % hits)
+            self.report({'INFO'}, "%d missing mirror groups added" % len(hits))
         
         return {'FINISHED'}
 classlist.append(DMR_OP_AddMissingRightVertexGroups)
@@ -416,10 +349,6 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
                         vg.index: vg for vg in vgroups if (vg.name[-1].lower()=='r' and sum([vg.name[-2:]==s for s in oppositestr.keys()]))
                     }
                 
-                for x in targetgroups.items():
-                    break
-                    print([x[0], x[1].name])
-                
                 for v in [v for v in obj.data.vertices if v.select]:
                     checkedvges = []
                     for vge in v.groups:
@@ -466,6 +395,83 @@ class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
             
         return {'FINISHED'}
 classlist.append(DMR_OT_FixVertexGroupSides)
+
+# =============================================================================
+
+class DMR_OT_MatchMirrorGroups(bpy.types.Operator):
+    """Matches right side vertex weights with left weights"""
+    bl_idname = "dmr.match_mirror_groups"
+    bl_label = "Match Mirror Groups"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+    
+    def execute(self, context):
+        thresh = 0.01
+        
+        thresh = thresh*thresh
+        sqr = lambda x: (x*x)
+        MirroredDistance = lambda v1,v2: ( sqr(v2[0]+v1[0]) + sqr(v2[1]-v1[1]) + sqr(v2[2]-v1[2]) )
+        UpperLetters = lambda x: "".join([c for c in x if c in "QWERTYUIOPASDFGHJKLZXCVBNM"]) 
+        Digits = lambda x: "".join([c for c in x if c in "0123456789"]) 
+        
+        mode = context.active_object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        for obj in context.selected_objects:
+            if obj.type != 'MESH':
+                continue
+            
+            vgroups = obj.vertex_groups
+            
+            loops = tuple(obj.data.loops)
+            vertices = tuple(obj.data.vertices)
+            polygons = tuple(obj.data.polygons)
+            
+            leftverts = tuple(set([vertices[i] for p in polygons if p.center[0] >= 0 for i in p.vertices]))
+            rightverts = tuple(set([vertices[i] for p in polygons if p.center[0] <= 0 for i in p.vertices]))
+            
+            vertexpairs = tuple(
+                (v1, v2)
+                for v1 in vertices
+                for v2 in vertices if (MirroredDistance(v1.co, v2.co) <= thresh)
+            )
+            
+            targetgroups = [vg1 for vg1 in vgroups if (vg1.name[-2:] == ".l")]
+            
+            # Create mirror groups
+            for vg1 in targetgroups:
+                break
+                if not sum([1 for vg2 in vgroups if (
+                    UpperLetters(vg2.name) == (UpperLetters(vg1.name)[:-1]+"R") and
+                    Digits(vg2.name) == Digits(vg1.name)
+                )]):
+                    vgroups.new(name=SwapBoneName(vg1.name))
+            
+            # Find group pairs
+            oppositegroup = {
+                vg1: vg2
+                for vg1 in vgroups if (vg1.name[-2:] == ".l")
+                for vg2 in vgroups if (
+                    vg2.name == vg1.name[:-2]+".r"
+                    )
+            }
+            
+            [vg2.remove(range(0, len(vertices))) for vg1, vg2 in oppositegroup.items()]
+            #[vg1.remove([v.index]) for v in rightverts for vg1 in targetgroups if v.co[0] < 0.0]
+            
+            for v1, v2 in vertexpairs:
+                for vge1 in v1.groups:
+                    vg1 = vgroups[vge1.group]
+                    if vg1 in oppositegroup.keys():
+                        vg2 = oppositegroup[vg1]
+                        vg2.add([v2.index], vge1.weight, 'REPLACE')
+           
+        bpy.ops.object.mode_set(mode=mode)
+        return {'FINISHED'}
+classlist.append(DMR_OT_MatchMirrorGroups)
 
 # =============================================================================
 
