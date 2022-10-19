@@ -24,6 +24,7 @@ modulesNames = [
     'dmr_op_shapekey',
     'dmr_op_vcolor',
     'dmr_op_vgroup',
+    'dmr_op_uv',
     'dmr_op_object',
     'dmr_op_pose',
     'dmr_op_image',
@@ -63,7 +64,7 @@ def register():
                 sys.modules[currentModuleName].register()
  
 def unregister():
-    for currentModuleName in reversed(modulesFullNames.values()):
+    for currentModuleName in list(modulesFullNames.values())[::-1]:
         if currentModuleName in sys.modules:
             if hasattr(sys.modules[currentModuleName], 'unregister'):
                 sys.modules[currentModuleName].unregister()

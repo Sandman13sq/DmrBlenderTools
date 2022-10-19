@@ -201,45 +201,6 @@ classlist.append(DMR_OP_SetEdgeCrease)
 
 # =============================================================================
 
-class DMR_OP_FitMirrorModifierToUVEdge(bpy.types.Operator):
-    """Sets the \"Mirror U\" value to object UV bounds"""
-    bl_idname = "dmr.mirror_modifier_fit_to_uv_bounds"
-    bl_label = "Fit Mirror Modifier U Offset to UV Bounds"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    edge : bpy.props.EnumProperty(
-        name="Edge", default = 0, items=(
-            ('LEFT', "Left", "Fit to left bound of UVs"),
-            ('RIGHT', "Right", "Fit to right bound of UVs"),
-            ('CURSOR', "2D Cursor", "Fit to 2D Cursor"),
-        ))
-    
-    @classmethod
-    def poll(cls, context):
-        return context.active_object is not None
-
-    def execute(self, context):
-        object = context.object
-        uvlayer = object.data.uv_layers.active.data
-        print([m.type for m in object.modifiers])
-        
-        bound = 0
-        if self.edge == 'LEFT':
-            bound = min([uv.uv[0] for uv in uvlayer])-0.5
-        elif self.edge == 'RIGHT':
-            bound = max([uv.uv[0] for uv in uvlayer])-0.5
-        elif self.edge == 'RIGHT':
-            bound = context.area.spaces.active.cursor_location[0]-0.5
-        
-        for m in context.object.modifiers:
-            if m.type == 'MIRROR' and m.use_mirror_u:
-                m.mirror_offset_u = bound*2
-                print(bound)
-        return {'FINISHED'}
-classlist.append(DMR_OP_FitMirrorModifierToUVEdge)
-
-# =============================================================================
-
 class DMR_OP_RenamePalette(bpy.types.Operator):
     """"""
     bl_idname = "dmr.palette_rename"
@@ -308,44 +269,6 @@ class DMR_OP_RemovePalette(bpy.types.Operator):
             data.remove(data.palettes[self.palette_name])
         return {'FINISHED'}
 classlist.append(DMR_OP_RemovePalette)
-
-# =============================================================================
-
-class DMR_OP_FlipUVsAlongAnchor(bpy.types.Operator):
-    """Flips selected UVs along anchor"""
-    bl_idname = "dmr.flip_uvs_along_anchor"
-    bl_label = "Flips UVs Along Anchor"
-    bl_options = {'REGISTER', 'UNDO'}   
-    
-    anchor : bpy.props.EnumProperty(name="Side", items = (
-        ('LEFT', "Left", "Flip over left side"),
-        ('RIGHT', "Right", "Flip over right side")
-    ))
-    
-    def execute(self, context):
-        mode = context.active_object.mode
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-        for obj in [x for x in bpy.context.selected_objects if x.type == 'MESH']:
-            if not obj.data.uv_layers:
-                continue
-            uvlayer = obj.data.uv_layers.active
-            selectedloops = [i for p in obj.data.polygons if p.select for i in p.loop_indices]
-            targetloops = tuple([l for i,l in enumerate(uvlayer.data) if (l.select and i in selectedloops)])
-            
-            if self.anchor == 'LEFT':
-                point = min([l.uv[0] for l in targetloops if l.uv[0] != 0.0])
-                for l in targetloops:
-                    l.uv[0] = point-(l.uv[0]-point)
-            
-            elif self.anchor == 'RIGHT':
-                point = max([l.uv[0] for l in targetloops if l.uv[0] != 0.0])
-                for l in targetloops:
-                    l.uv[0] = point-(l.uv[0]-point)
-        
-        bpy.ops.object.mode_set(mode=mode)
-        return {'FINISHED'}
-classlist.append(DMR_OP_FlipUVsAlongAnchor)
 
 # =============================================================================
 
