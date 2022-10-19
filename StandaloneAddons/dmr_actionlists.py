@@ -25,7 +25,7 @@ def FindContextArmature(context):
 def ActiveList(self, context):
     sc = context.scene
     armobj = FindContextArmature(context)
-    if armobj:
+    if armobj and sc.actionlists:
         return sc.actionlists[int(armobj.data.actionlists_index)]
     elif sc.actionlists:
         return sc.actionlists[int(sc.actionlists_index)]
