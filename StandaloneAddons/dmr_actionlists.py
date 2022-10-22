@@ -175,7 +175,10 @@ class DMR_OP_ActionList_AddEntry(bpy.types.Operator):
         return ActiveList(self, context) != None
     
     def execute(self, context):
-        ActiveList(self, context).Add()
+        if context.object and context.object.animation_data and context.object.animation_data.action:
+            ActiveList(self, context).Add(context.object.animation_data.action)
+        else:
+            ActiveList(self, context).Add()
         return {'FINISHED'}
 classlist.append(DMR_OP_ActionList_AddEntry)
 
