@@ -475,6 +475,52 @@ classlist.append(DMR_OT_MatchMirrorGroups)
 
 # =============================================================================
 
+class DMR_OT_SetWeightByVertexStep(bpy.types.Operator):
+    """Sets weight for each vertex by stepping from selected vertex"""
+    bl_idname = "dmr.set_weight_by_step"
+    bl_label = "Set Weight by Step"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    count : bpy.props.IntProperty(name="Step Count", min=0, default = 5)
+    weight_start : bpy.props.FloatProperty(name="Weight Start", min=0, max=1, default=0.0)
+    weight_end : bpy.props.FloatProperty(name="Weight End", min=0, max=1, default=1.0)
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+    
+    def execute(self, context):
+        obj = context.object
+        mode = obj.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        vertices = tuple(obj.data.vertices)
+        edges = tuple(obj.data.edges)
+        
+        vgroup = obj.vertex_groups.active
+        
+        wstart = self.weight_start
+        wend = self.weight_end
+        wdist = wend-wstart
+        
+        n = self.count
+        vertexindices = [v.index for v in vertices if v.select]
+        vgroup.add(vertexindices, wstart, 'REPLACE')
+        
+        for iteration in range(0, n):
+            nextverts = [vi for e in edges if (e.vertices[0] in vertexindices or e.vertices[1] in vertexindices) for vi in e.vertices]
+            newverts = [vi for vi in nextverts if vi not in vertexindices]
+            
+            amt = ( max(0, iteration/(n-1)) )
+            weight = amt * wdist + wstart
+            vgroup.add(newverts, weight, 'REPLACE')
+            vertexindices += newverts
+        
+        bpy.ops.object.mode_set(mode=mode)
+        return {'FINISHED'}
+classlist.append(DMR_OT_SetWeightByVertexStep)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
