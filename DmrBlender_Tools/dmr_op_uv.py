@@ -160,6 +160,69 @@ classlist.append(DMR_OT_MatchMirrorUVs)
 
 # =============================================================================
 
+class DMR_OP_SplitAndAlignUVEnds(bpy.types.Operator):
+    """Splits and aligns selected uv tris and quads"""
+    bl_idname = "dmr.split_uv_ends"
+    bl_label = "Split And Align UV Ends"
+    bl_options = {'REGISTER', 'UNDO'}   
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        for obj in bpy.context.selected_objects:
+            if obj.type != 'MESH':
+                continue
+            uvlayer = obj.data.uv_layers.active
+            uvdata = tuple(uvlayer.data)
+            uvindex = {uv: i for i,uv in enumerate(uvdata)}
+            polys = tuple(obj.data.polygons)
+            targetloops = tuple([i for i, uv in enumerate(uvdata) if uv.select])
+            targetpolys = [p for p in polys if sum([1 for l in p.loop_indices if l in targetloops]) == p.loop_total ]
+            
+            Sqr = lambda x: x*x
+            
+            for p in targetpolys:
+                n = p.loop_total
+                uvs = [uvdata[l] for l in p.loop_indices]
+                edges = [ [uvs[i], uvs[(i+1) % n]] for i in range(0, n) ]
+                
+                xedges = edges[:]
+                yedges = edges[:]
+                xedges.sort( key=lambda x: Sqr(x[0].uv[1]-x[1].uv[1]) )
+                yedges.sort( key=lambda x: Sqr(x[0].uv[0]-x[1].uv[0]) )
+                
+                xpair = xedges[0]
+                ypair = yedges[0]
+                
+                # Align with X
+                if Sqr(xpair[0].uv[1]-xpair[1].uv[1]) < Sqr(ypair[0].uv[0]-ypair[1].uv[0]):
+                    xpair.sort(key=lambda x: x.uv[0])
+                    
+                    if n == 3:
+                        otheruv = [x for x in uvs if x not in xpair][0]
+                        otheruv.uv[0] = (xpair[0].uv[0]+xpair[1].uv[0])*0.5
+                        
+                    elif n == 4:
+                        otheruvs = [
+                            uv
+                            for e in edges if sum(1 for x in xpair if x in e) == 1
+                            for uv in e if uv not in xpair
+                        ][::-1]
+                        
+                        #otheruvs = [x for x in uvs if x not in xpair]
+                        #otheruvs.sort(key=lambda x: x.uv[0])
+                        mid = (otheruvs[0].uv[1] + otheruvs[1].uv[1]) * 0.5
+                        
+                        otheruvs[0].uv[0] = xpair[0].uv[0]
+                        otheruvs[1].uv[0] = xpair[1].uv[0]
+                        otheruvs[0].uv[1] = mid
+                        otheruvs[1].uv[1] = mid
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+        return {'FINISHED'}
+classlist.append(DMR_OP_SplitAndAlignUVEnds)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
