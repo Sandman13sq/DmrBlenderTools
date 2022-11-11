@@ -33,7 +33,7 @@ class DMR_OT_Rigify_FindLayerInfo(bpy.types.Operator):
                 for i, lyr in enumerate(metarig.data.rigify_layers) if lyr.name
             ]
             
-            outrig.data['rigify_layer_data'][-1][0] = 32
+            outrig.data['rigify_layer_data'][-1][0] = 28
             
             outrig.data['rigify_layer_name'] = [
                 lyr.name 
@@ -53,6 +53,9 @@ class DMR_OT_ArmatureSetLayerVisibility(bpy.types.Operator):
     
     layers : bpy.props.BoolVectorProperty(name='Layers', size=32, default=[False]*32)
     
+    def draw(self, context):
+        []
+    
     @classmethod
     def poll(cls, context):
         return context.active_object and context.active_object.type == 'ARMATURE'
@@ -61,6 +64,28 @@ class DMR_OT_ArmatureSetLayerVisibility(bpy.types.Operator):
         context.active_object.data.layers = tuple(self.layers)
         return {'FINISHED'}
 classlist.append(DMR_OT_ArmatureSetLayerVisibility)
+
+# --------------------------------------------------------------------------------
+
+class DMR_OT_ArmatureToggleLayerVisibility(bpy.types.Operator):
+    bl_idname = "dmr.armature_layer_toggle"
+    bl_label = "Toggle Layer Visibility"
+    
+    layers : bpy.props.BoolVectorProperty(name='Layers', size=32, default=[False]*32)
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == 'ARMATURE'
+
+    def execute(self, context):
+        armlayers = context.active_object.data.layers
+        targetlayers = self.layers
+        layerpairs = list(zip(targetlayers, armlayers))
+        
+        alloff = sum([x==y for x,y in layerpairs if x]) == 0
+        context.active_object.data.layers = tuple(y if not x else alloff for x,y in layerpairs)
+        return {'FINISHED'}
+classlist.append(DMR_OT_ArmatureToggleLayerVisibility)
 
 # ---------------------------------------------------------------------------------
 
@@ -101,6 +126,37 @@ class DMR_OT_ArmatureSetBoneLayerIndex(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_ArmatureSetBoneLayerIndex)
 
+# ---------------------------------------------------------------------------------
+
+class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
+    bl_idname = "dmr.rigify_mete_move_row"
+    bl_label = "Move Rigify Row"
+    
+    row : bpy.props.IntProperty(name="Row")
+    direction : bpy.props.EnumProperty(name="Direction", items=(
+        ('DOWN', "Down", "Down"),
+        ('UP', "Up", "Up")
+    ))
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == 'ARMATURE'
+
+    def execute(self, context):
+        rigifylayers = context.object.data.rigify_layers
+        index = self.row
+        newindex = max(0, min( (index+1) if self.direction == 'DOWN' else (index-1), len(rigifylayers)-1))
+        
+        lyrcurr = [lyr for lyr in rigifylayers if lyr.row == index]
+        lyrnext = [lyr for lyr in rigifylayers if lyr.row == newindex]
+        
+        for lyr in lyrcurr:
+            lyr.row = newindex
+        for lyr in lyrnext:
+            lyr.row = index
+        return {'FINISHED'}
+classlist.append(DMR_OT_MoveRigifyLayerRow)
+
 # =============================================================================
 
 class DMR_PT_Rigify_Pose(bpy.types.Panel):
@@ -122,28 +178,57 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
         data = outrig.data['rigify_layer_data']
         
         layers = [ [names[i]] + list(data[i]) for i in range(0, len(data))]
-        sortedlayers = layers[:]
+        sortedlayers = layers[:-1]
         sortedlayers.sort(key=lambda x: x[1])
+        sortedlayers.append(layers[-1])
         
-        allon = outrig.data.layers[0]
-        layout.operator('dmr.armature_layer_visibility', text='All On' if not allon else 'All Off').layers = tuple([not allon or (x==28) for x in range(0, 32)])
+        r = layout.row()
+        indices = tuple([layers.index(x) for x in layers if x[0]])
+        allon = outrig.data.layers[indices[0]]
+        togglelayers = tuple([((x in indices and not allon)) or (x==28) for x in range(0, 32)])
+        r.operator('dmr.armature_layer_visibility', text='All On' if not allon else 'All Off').layers = togglelayers
+        r.operator('dmr.armature_layer_visibility', text='Deform').layers = tuple(x==29 for x in range(0, 32))
         
         # Draw Layer Toggles
-        c = layout.column(align=1)
-        lastrow = -1
+        rc = layout.row(align=1)
+        c = rc.column(align=1)
+        c2 = rc.column(align=1)
         
+        lastrow = -1
+        rowlayers = []
+        
+        # Rows
         for i, lyrdata in enumerate(sortedlayers):
             if not lyrdata[0]:
                 continue
             
-            lyrindex = layers.index(lyrdata)
+            lyrrow = lyrdata[1]
             
-            if lyrdata[1] != lastrow:
+            # New Row
+            if lyrrow != lastrow:
+                if len(rowlayers) > 1:
+                    rowlayerbools = tuple([x in rowlayers for x in range(0, 32)])
+                    r2 = c2.row(align=1)
+                    r2.operator('dmr.armature_layer_visibility', text='', icon='ZOOM_PREVIOUS').layers = rowlayerbools
+                    r2.operator('dmr.armature_layer_toggle', text='', icon='RESTRICT_SELECT_OFF').layers = rowlayerbools
+                elif i > 0:
+                    c2.label(text="", icon='BLANK1')
+                
+                if lyrrow - lastrow > 1:
+                    c.separator()
+                    c2.separator()
+                
                 r = c.row()
-                lastrow = lyrdata[1]
+                lastrow = lyrrow
+                rowlayers = []
             
+            lyrindex = layers.index(lyrdata) if i < len(sortedlayers)-1 else 28
+            rowlayers.append(lyrindex)
+            
+            # Operators
             rr = r.row(align=1)
             rr.prop(outrig.data, 'layers', index=lyrindex, text=lyrdata[0], toggle=1)
+            #rr.prop(outrig.data, 'layers', index=lyrindex, text=str(lyrindex), toggle=1)
             rr.operator('dmr.armature_layer_visibility', text='', icon='VIEWZOOM').layers = [x==lyrindex for x in range(0, 32)]
 classlist.append(DMR_PT_Rigify_Pose)
 
@@ -194,57 +279,47 @@ class DMR_PT_Rigify_Meta(bpy.types.Panel):
                     for i, l in enumerate(b.bone.layers):
                         selectedlayers[i] |= l
         
-        sortedlayers = rigifylayers[:]
+        sortedlayers = rigifylayers[:-1]
         sortedlayers.sort(key=lambda x: x.row)
+        sortedlayers.append(rigifylayers[-1])
         
-        for i, lyrdata in enumerate(sortedlayers[:-1]):
+        # Layers
+        for i, lyrdata in enumerate(sortedlayers):
             if not lyrdata.name:
                 continue
-            lyrindex = rigifylayers.index(lyrdata)
             
-            if lyrdata.row != lastrow or (i == len(rigifylayers)-1):
+            lyrindex = rigifylayers.index(lyrdata)
+            lyrrow = lyrdata.row
+            
+            # New Row
+            if lyrrow != lastrow or (i == len(sortedlayers)-1):
+                if lyrrow - lastrow > 1:
+                    c.separator()
+                
                 r = c.row()
-                lastrow = lyrdata.row
+                lastrow = lyrrow
+                rowcount = 0
             
             rr = r.row(align=1)
             rr.scale_x = 0.9
             
+            # Operators
             rrr = rr.row(align=1)
             rrr.active = selectedlayers[lyrindex]
             rrr.prop(metarig.data, 'layers', index=lyrindex, text=str(lyrindex) + ": " + lyrdata.name, toggle=1)
             #rrr.prop(metarig.data, 'layers', index=i, text=str(i), toggle=1)
             rr.operator('dmr.armature_layer_visibility', text='', icon='VIEWZOOM').layers = [x==lyrindex for x in range(0, 32)]
             rr.operator('dmr.armature_layer_assign_index', text='', icon='GREASEPENCIL').layer = lyrindex
-        
-        # Active Bone
-        
-        pb = None
-        if context.active_pose_bone:
-            pb = context.active_pose_bone
-        elif context.active_bone:
-            pb = metarig.pose.bones[context.active_bone.name]
-        
-        if pb:
-            c = layout.box().column(align=1)
-            c.label(text=pb.name, icon='BONE_DATA')
             
-            for i,l in enumerate(pb.bone.layers):
-                if l:
-                    c.operator('dmr.armature_layer_assign_index', text=str(layerindexmap[i])+": "+layernamemap[i], icon='GREASEPENCIL').layer = i
-            
-            if pb.rigify_parameters.fk_layers_extra:
-                if sum(pb.rigify_parameters.fk_layers):
-                    i = [i for i,l in enumerate(pb.rigify_parameters.fk_layers) if l][0]
-                    c.prop(pb.rigify_parameters, 'fk_layers', text="FK | "+str(layerindexmap[i])+": "+layernamemap[i])
-                else:
-                    c.prop(pb.rigify_parameters, 'fk_layers', text="FK | (None)")
-            
-            if pb.rigify_parameters.tweak_layers_extra:
-                if sum(pb.rigify_parameters.tweak_layers):
-                    i = [i for i,l in enumerate(pb.rigify_parameters.tweak_layers) if l][0]
-                    c.prop(pb.rigify_parameters, 'tweak_layers', text="Tweak | "+str(layerindexmap[i])+": "+layernamemap[i])
-                else:
-                    c.prop(pb.rigify_parameters, 'tweak_layers', text="Tweak | (None)")
+            cc = rr.column(align=1)
+            cc.scale_y = 0.5
+            op = cc.operator('dmr.rigify_mete_move_row', text='', icon='TRIA_UP')
+            op.row = lyrdata.row
+            op.direction = 'UP'
+            op = cc.operator('dmr.rigify_mete_move_row', text='', icon='TRIA_DOWN')
+            op.row = lyrdata.row
+            op.direction = 'DOWN'
+        
 classlist.append(DMR_PT_Rigify_Meta)
 
 # =============================================================================
