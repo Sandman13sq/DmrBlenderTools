@@ -28,11 +28,13 @@ modulesNames = [
     'dmr_op_object',
     'dmr_op_pose',
     'dmr_op_image',
+    'dmr_op_action',
     
     'dmr_panel_armature',
     'dmr_panel_shapekey',
     'dmr_panel_vcolor',
     'dmr_panel_vgroup',
+    'dmr_panel_action',
 ]
 
 import sys

@@ -57,6 +57,64 @@ classlist.append(DMR_OP_SelectObjectByMaterial)
 
 # =============================================================================
 
+class DMR_OT_SetActiveMaterialOutput(bpy.types.Operator):
+    bl_idname = "dmr.set_active_material_output"
+    bl_label = "Set Active Material Output"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    node_name : bpy.props.StringProperty(name="Node Name")
+    target : bpy.props.EnumProperty(name="Target", default='VISIBLE', items=(
+        ('ACTIVE', "Active Object", ""),
+        ('SELECTED', "Selected Objects", ""),
+        ('VISIBLE', "Visible Objects", ""),
+        ('ALL', "All Objects", ""),
+        ('MATERIAL', "All Materials", "")
+    ))
+    case_sensitive : bpy.props.BoolProperty(name='Case Sensitive', default=False)
+    
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.active_material
+
+    def execute(self, context):
+        objects = []
+        
+        if self.target == 'ACTIVE':
+            objects = [context.object]
+        elif self.target == 'SELECTED':
+            objects = context.selected_objects
+        elif self.target == 'VISIBLE':
+            objects = [x for x in context.scene.objects if x.visible_get()]
+        elif self.target == 'ALL':
+            objects = [x for x in bpy.data.objects]
+        
+        objects = [x for x in objects if x.active_material]
+        materials = list(set([obj.active_material for obj in objects]))
+        
+        nodename = self.node_name
+        
+        for material in materials:
+            outputnodes = [x for x in material.node_tree.nodes if x.type == 'OUTPUT_MATERIAL']
+            
+            # Use Name
+            output = ([x for x in outputnodes if x.name.lower() == nodename.lower()]+[None])[0]
+            
+            # Check Label
+            if not output:
+                output = ([x for x in outputnodes if x.label.lower() == nodename.lower()]+[None])[0]
+            
+            if output:
+                for nd in outputnodes:
+                    nd.is_active_output = False
+                output.is_active_output = True
+        
+        context.view_layer.update()
+            
+        return {'FINISHED'}
+classlist.append(DMR_OT_SetActiveMaterialOutput)
+
+# =============================================================================
+
 class DMR_OP_ToggleSubSurfOptimalDisplay(bpy.types.Operator):
     bl_label = "Toggle Optimal Display"
     bl_idname = 'dmr.toggle_sss_optimal_display'
@@ -216,7 +274,8 @@ class DMR_OP_NewUVLayerForSelected(bpy.types.Operator):
     
     def execute(self, context):
         for mesh in set([obj.data for obj in context.selected_objects if obj.type == 'MESH']):
-            mesh.uv_layers.new(name=self.name)
+            if self.name not in mesh.uv_layers.keys():
+                mesh.uv_layers.new(name=self.name)
         
         return {'FINISHED'}
 classlist.append(DMR_OP_NewUVLayerForSelected)
@@ -236,10 +295,36 @@ class DMR_OP_NewVCLayerForSelected(bpy.types.Operator):
     
     def execute(self, context):
         for mesh in set([obj.data for obj in context.selected_objects if obj.type == 'MESH']):
-            mesh.vertex_colors.new(name=self.name)
+            if bpy.app.version >= (3, 2, 2):
+                if self.name not in mesh.color_attributes.keys():
+                    mesh.color_attributes.new(self.name, "BYTE_COLOR", 'CORNER')
+            else:
+                if self.name not in mesh.vertex_colors.keys():
+                    mesh.vertex_colors.new(name=self.name)
         
         return {'FINISHED'}
 classlist.append(DMR_OP_NewVCLayerForSelected)
+
+# =============================================================================
+
+class DMR_OP_NewVGroupForSelected(bpy.types.Operator):
+    bl_label = "Add Vertex Group To Selected Objects"
+    bl_idname = 'dmr.new_vgroup_to_selected'
+    bl_description = 'Adds new vertex color layer to all selected objects'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    name : bpy.props.StringProperty(name='Layer Name')
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=200)
+    
+    def execute(self, context):
+        for obj in set([obj for obj in context.selected_objects if obj.type == 'MESH']):
+            if self.name not in obj.vertex_groups.keys():
+                obj.vertex_groups.new(name=self.name)
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_NewVGroupForSelected)
 
 # =============================================================================
 

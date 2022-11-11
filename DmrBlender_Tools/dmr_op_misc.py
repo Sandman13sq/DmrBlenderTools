@@ -295,6 +295,23 @@ classlist.append(DMR_OP_SetTextFromDialog)
 
 # =============================================================================
 
+class DMR_OP_ModifierOffsetFromCursor(bpy.types.Operator):
+    bl_idname = "dmr.modifier_offset_from_cursor"
+    bl_label = "Set Modifier Offset From Cursor"
+    bl_description = "Sets offset for active modifier using 3D cursor"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.modifiers
+    
+    def execute(self, context):
+        context.object.modifiers.active.offset = context.scene.cursor.location
+        return {'FINISHED'}
+classlist.append(DMR_OP_ModifierOffsetFromCursor)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
