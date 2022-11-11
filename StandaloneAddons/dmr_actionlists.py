@@ -301,19 +301,14 @@ class DMR_UL_ActionList(bpy.types.UIList):
             r.scale_x = 1.5
             r.operator('dmr.set_context_armature_action', text="", icon='PLAY').action=item.action.name
             r = layout.row(align=1)
-            r.prop(item, "action", text="", icon='ACTION', emboss=0)
+            r.prop(item.action, "name", text="", icon='ACTION', emboss=0)
         else:
             r.prop(item, "action", text="", icon='QUESTION')
 classlist.append(DMR_UL_ActionList)
 
 # =====================================================================================
 
-class DMR_PT_ActionList(bpy.types.Panel):
-    bl_label = "Action List"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Animation'
-    
+class PT_ActionListSuper(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         
@@ -351,8 +346,28 @@ class DMR_PT_ActionList(bpy.types.Panel):
                 
                 col.separator()
                 col.operator("dmr.actionlist_entry_move", icon='TRIA_UP', text="").direction = 'UP'
-                col.operator("dmr.actionlist_entry_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
-classlist.append(DMR_PT_ActionList)
+
+class DMR_PT_ActionList_3DView(PT_ActionListSuper):
+    bl_label = "Action List"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Animation'
+classlist.append(DMR_PT_ActionList_3DView)
+
+class DMR_PT_ActionList_Properties(PT_ActionListSuper):
+    bl_label = "Action List"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "data"
+    bl_category = 'ARMATURE'
+classlist.append(DMR_PT_ActionList_Properties)
+
+class DMR_PT_ActionList_Graph(PT_ActionListSuper):
+    bl_label = "Action List"
+    bl_space_type = 'GRAPH_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "View"
+classlist.append(DMR_PT_ActionList_Graph)
 
 # =================================================================================
 
