@@ -24,13 +24,14 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
         mode = active.mode
         layout = self.layout
         color = bpy.context.scene.editmodecolor
-        col255 = [x*255 for x in color[:3]]
+        col255 = [x*255 for x in color[:4]]
         #colhex = '%02x%02x%02x' % (int(color[0]*255), int(color[1]*255), int(color[2]*255))
         #colhex = colhex.upper()
         
         if mode in {'EDIT', 'VERTEX_PAINT'}:
             col = layout.column(align=1)
             
+            # Color
             colorarea = col.row(align = 1)
             row = colorarea.row(align = 1)
             
@@ -50,12 +51,22 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
             cc.operator("dmr.pick_vertex_color", icon='EYEDROPPER', text="")
             cc.operator("dmr.select_vertex_color", icon='RESTRICT_SELECT_OFF', text="")
             
+            rr = col.row(align=1)
+            rr.prop(context.scene, "editmodecolor", index=0, text='')
+            rr.prop(context.scene, "editmodecolor", index=1, text='')
+            rr.prop(context.scene, "editmodecolor", index=2, text='')
+            rr.prop(context.scene, "editmodecolor", index=3, text='')
+            
+            # Color Meta
             row = col.row(align=1)
-            row.label(text = '<%d, %d, %d>   A:%.2f' % (col255[0],col255[1],col255[2], color[3]) )
+            row.label(text = '%d,%d,%d,%d' % (col255[0],col255[1],col255[2], col255[3]) )
+            
+            row.prop(context.scene, "editmodevalue", text='RGB Net', icon='WORLD_DATA')
             
             row = col.row(align = 1)
             row.operator("dmr.vc_clear_alpha", icon='MATSPHERE', text="Clear Alpha")
             
+            # Set individual channel
             row = layout.row(align = 1)
             r = row.row(align=1)
             r.label(text='Set Channel: ')
@@ -195,6 +206,9 @@ classlist.append(DMR_PT_3DViewVertexColors_Layers)
 
 # =============================================================================
 
+def SyncEditModeEditValueToColor(self, context):
+    context.scene.editmodecolor[:3] = [context.scene.editmodevalue]*3;
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
@@ -202,6 +216,10 @@ def register():
     bpy.types.Scene.editmodecolor = bpy.props.FloatVectorProperty(
         name="Paint Color", subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", size=4, min=0.0, max=1.0,
         default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
+    bpy.types.Scene.editmodevalue = bpy.props.FloatProperty(
+        name="Paint Value", default=1, min=0, max=1, update=SyncEditModeEditValueToColor
     )
     
     bpy.types.Scene.vc_palette_display_width = bpy.props.IntProperty(
