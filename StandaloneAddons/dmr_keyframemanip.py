@@ -11,6 +11,8 @@ bl_info = {
 
 import bpy
 import random
+import mathutils
+import math
 
 def GetChainRoot(b):
     return GetChainRoot(b.parent) if (b.parent and b.parent.select and b.use_connect) else b
@@ -107,6 +109,218 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         
         return {'FINISHED'}
 classlist.append(DMR_OP_KeyframeManip_Wave)
+
+# =============================================================================
+
+class DMR_OP_KeyframeManip_WaveCreate(bpy.types.Operator):
+    bl_label = "Keyframe Manip - Create Wave"
+    bl_idname = 'dmr.keyframe_manip_wave_create'
+    bl_description = 'Offsets Keyframes by order of bone chain';
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    overwrite : bpy.props.BoolProperty(
+        name="Overwrite", default=True,
+        description="Overwrite current transform of bones before keyframing",
+    )
+    
+    frame_offset : bpy.props.FloatProperty(
+        name="Frame Offset", default=0, step=1, min=1,
+        description="Total offset of wave",
+    )
+    
+    chain_offset : bpy.props.FloatProperty(
+        name="Chain Offset", default=1,
+        description="Offset per chain",
+    )
+    
+    bone_offset : bpy.props.FloatProperty(
+        name="Bone Offset", default=4,
+        description="Offset per bone in chain",
+    )
+    
+    frequency : bpy.props.IntProperty(
+        name="Frequency", default=1,
+        description="Number of times wave occurs in action",
+    )
+    
+    translation_enabled : bpy.props.BoolProperty(name="Translation Enabled", default=True)
+    
+    rotation : bpy.props.FloatVectorProperty(name="Rotation Angles", size=6, default=[0.0]*6, subtype='EULER')
+    rotation_toggle : bpy.props.BoolVectorProperty(name="Rotation Toggle", size=6, default=[True]*6)
+    rotation_enabled : bpy.props.BoolProperty(name="Rotation Enabled", default=True)
+    
+    scale : bpy.props.FloatVectorProperty(name="Scale", size=6, default=[1.0]*6)
+    scale_toggle : bpy.props.BoolVectorProperty(name="Scale Toggle", size=6, default=[True]*6)
+    scale_enabled : bpy.props.BoolProperty(name="Scale Enabled", default=True)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, 'overwrite')
+        layout.prop(self, 'frequency')
+        
+        r = layout.row(align=1)
+        r.prop(self, 'frame_offset')
+        r.prop(self, 'chain_offset')
+        r.prop(self, 'bone_offset')
+        
+        r = layout.row(align=1)
+        r.prop(self, 'translation_enabled', text="Loc", toggle=True)
+        r.prop(self, 'rotation_enabled', text="Rot", toggle=True)
+        r.prop(self, 'scale_enabled', text="Scale", toggle=True)
+        
+        # Peak
+        for header, indices in (("Peak", (0,1,2)), ("Trough", (3,4,5))):
+            b = layout.box().column(align=1)
+            b.label(text="== %s ==" % header)
+            
+            r = b.row(align=1)
+            r.enabled = self.rotation_enabled
+            r.label(text="Rot:")
+            for i in indices:
+                r.prop(self, 'rotation', text="", index=i)
+            
+            r = b.row(align=0)
+            r.enabled = self.scale_enabled
+            r.label(text="Scale:")
+            for i in indices:
+                rr = r.row(align=1)
+                rrr = rr.row(align=1)
+                rrr.scale_x = 0.3
+                rrr.prop(self, 'scale_toggle', text="XYZ"[i%3], index=i, toggle=True)
+                rr.prop(self, 'scale', text="", index=i)
+    
+    def execute(self, context):
+        sc = context.scene
+        obj = context.object
+        action = obj.animation_data.action
+        fcurves = action.fcurves
+        frame_range = list(action.frame_range)
+        
+        frameoffset = self.frame_offset
+        framechainoffset = self.chain_offset
+        frameboneoffset = self.bone_offset
+        
+        frame_range[1] /= self.frequency
+        
+        angles = (10, 0, 0)
+        rot = mathutils.Euler(((x) for x in self.rotation[0:3]), 'XYZ')
+        
+        transformrotation = [
+            mathutils.Euler((self.rotation[0:3]), 'XYZ'),
+            mathutils.Euler((self.rotation[3:6]), 'XYZ'),
+        ]
+        
+        transformscale = (
+            self.scale[0:3],
+            self.scale[3:6]
+        )
+        
+        def GetBoneChain(b, out=[]):
+            out.append(b)
+            for c in b.children:
+                GetBoneChain(c, out)
+            return out
+        
+        targetbones = [pb for pb in obj.pose.bones if pb.bone.select]
+        rootbones = [pb for pb in targetbones if (not pb.parent or not pb.parent.bone.select)]
+        chains = [GetBoneChain(pb, []) for pb in rootbones]
+        
+        pbscale = {pb: (1,1,1) if self.overwrite else pb.scale for pb in targetbones}
+        pbquat = {pb: (1,0,0,0) if self.overwrite else pb.rotation_quaternion for pb in targetbones}
+        pbeuler = {pb: (0,0,0) if self.overwrite else pb.rotation_euler for pb in targetbones}
+        
+        # Set Rotation and Keyframes
+        for chainindex, chain in enumerate(chains):
+            for boneindex, pb in enumerate(chain):
+                # Insert Keyframes
+                netoffset = int(
+                    framechainoffset * chainindex + 
+                    frameboneoffset * boneindex + 
+                    frameoffset
+                    )
+                
+                targetframes = [ 
+                    [int(frame_range[0]) + netoffset, int(frame_range[1]) + netoffset], 
+                    [int(frame_range[0]+frame_range[1]) // 2 + netoffset] 
+                ]
+                
+                # Rotation
+                if self.rotation_enabled:
+                    use_quaternion = pb.rotation_mode == 'QUATERNION'
+                    varstring = 'rotation_quaternion' if use_quaternion else 'rotation_euler'
+                    
+                    # Find Fcurves
+                    curves = [
+                        fcurves.find(pb.path_from_id(varstring), index=i)
+                        for i in range(0, 4)
+                        ]
+                    
+                    # Create missing Fcurves
+                    curves = [
+                        fc if fc else fcurves.new(pb.path_from_id(varstring), index=i, action_group=pb.name)
+                        for i, fc in enumerate(curves)
+                    ]
+                    
+                    # Make Cyclic
+                    if 1:
+                        [fc.modifiers.new('CYCLES') for fc in curves if 'CYCLES' not in [m.type for m in fc.modifiers]]
+                    
+                    # Clear previous keyframes
+                    for fc in curves:
+                        fc.keyframe_points.clear()
+                    
+                    # Insert Quaternion
+                    if use_quaternion:
+                        for transformindex, flist in enumerate(targetframes):
+                            pb.rotation_quaternion = pbquat[pb]
+                            pb.rotation_quaternion.rotate(transformrotation[transformindex])
+                            for f in flist:
+                                pb.keyframe_insert(varstring, frame=f)
+                    
+                    # Insert Euler
+                    else:
+                        for transformindex, flist in enumerate(targetframes):
+                            pb.rotation_euler = pbeuler[pb]
+                            pb.rotation_euler.rotate(transformrotation[transformindex])
+                            
+                            for f in flist:
+                                for i in [i for i in range(0, 3) if self.rotation_toggle[i] ]:
+                                    pb.keyframe_insert(varstring, frame=f, index=i)
+                    
+                # Scale
+                if self.scale_enabled:
+                    varstring = 'scale'
+                    
+                    # Find Fcurves
+                    curves = [
+                        fcurves.find(pb.path_from_id(varstring), index=i)
+                        for i in range(0, 3)
+                        ]
+                    
+                    # Create missing Fcurves
+                    curves = [
+                        fc if fc else fcurves.new(pb.path_from_id(varstring), index=i, action_group=pb.name)
+                        for i, fc in enumerate(curves)
+                    ]
+                    
+                    # Make Cyclic
+                    if 1:
+                        [fc.modifiers.new('CYCLES') for fc in curves if 'CYCLES' not in [m.type for m in fc.modifiers]]
+                    
+                    # Clear previous keyframes
+                    for fc in curves:
+                        fc.keyframe_points.clear()
+                    
+                    # Insert Keyframes
+                    for transformindex, flist in enumerate(targetframes):
+                        pb.scale = [x*y for x,y in zip(pbscale[pb], transformscale[transformindex])]
+                        
+                        for f in flist:
+                            for i in [i for i in ((0,1,2),(3,4,5))[transformindex] if self.scale_toggle[i] ]:
+                                pb.keyframe_insert(varstring, frame=f, index=i%3)
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_KeyframeManip_WaveCreate)
 
 # =============================================================================
 
