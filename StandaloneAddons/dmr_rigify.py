@@ -168,11 +168,16 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
     @classmethod
     def poll(self, context):
         obj = context.object
-        return obj and obj.type == 'ARMATURE' and obj.data.get('rigify_layer_data', None)
+        return obj and obj.type == 'ARMATURE' and not obj.data.rigify_layers
     
     def draw(self, context):
         layout = self.layout
         outrig = context.object
+        
+        layout.operator('dmr.rigify_find_layer_info')
+        
+        if not outrig.data.get('rigify_layer_data', None):
+            return
         
         names = outrig.data['rigify_layer_name']
         data = outrig.data['rigify_layer_data']
