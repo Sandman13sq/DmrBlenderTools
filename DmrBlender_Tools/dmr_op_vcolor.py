@@ -225,7 +225,7 @@ classlist.append(DMR_OP_SelectByVertexColor)
 
 class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
     color : bpy.props.FloatVectorProperty(
-        name="Paint Color", subtype="COLOR_GAMMA", size=4, min=0.0, max=1.0,
+        name="Paint Color", subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", size=4, min=0.0, max=1.0,
         default=(1.0, 1.0, 1.0, 1.0)
     )
     
@@ -247,6 +247,10 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
         description='Change using vertices instead of faces.',
     )
     
+    channels : bpy.props.BoolVectorProperty(
+        name="Channels", size=4, default=(True, True, True, True)
+    )
+    
     def execute(self, context):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
@@ -255,6 +259,8 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
         
         targetcolor = mathutils.Vector(self.color)
         vectorsize = 3 if self.keep_alpha else 4
+        
+        channels = tuple(self.channels)
         
         for obj in [x for x in context.selected_objects] + [context.object]:
             if obj.type != 'MESH': 
@@ -276,7 +282,14 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
             
             # Set colors
             for l in targetloops:
-                vcolors[l.index].color[:vectorsize] = targetcolor.lerp(vcolors[l.index].color, amt)[:vectorsize]
+                colorelement = vcolors[l.index]
+                precolor = colorelement.color
+                outcolor = targetcolor.lerp(precolor, amt)
+                
+                vcolors[l.index].color[0] = outcolor[0] if channels[0] else precolor[0]
+                vcolors[l.index].color[1] = outcolor[1] if channels[1] else precolor[1]
+                vcolors[l.index].color[2] = outcolor[2] if channels[2] else precolor[2]
+                vcolors[l.index].color[3] = outcolor[3] if channels[3] else precolor[3]
             
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}

@@ -29,7 +29,8 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
         #colhex = colhex.upper()
         
         if mode in {'EDIT', 'VERTEX_PAINT'}:
-            col = layout.column(align=1)
+            col = layout.column(align=0)
+            scene = context.scene
             
             # Color
             colorarea = col.row(align = 1)
@@ -39,7 +40,8 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
             cc.scale_y = 0.5
             op = cc.operator("dmr.set_vertex_color", icon='BRUSH_DATA', text="")
             op.mix_amount = 1.0
-            op.color = context.scene.editmodecolor
+            op.color = scene.editmodecolor
+            op.channels = scene.editmodechannels
             op = cc.operator("dmr.adjust_vertex_color", icon='CON_TRACKTO', text="")
             
             row.scale_x = 2
@@ -52,16 +54,29 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
             cc.operator("dmr.select_vertex_color", icon='RESTRICT_SELECT_OFF', text="")
             
             rr = col.row(align=1)
-            rr.prop(context.scene, "editmodecolor", index=0, text='')
-            rr.prop(context.scene, "editmodecolor", index=1, text='')
-            rr.prop(context.scene, "editmodecolor", index=2, text='')
-            rr.prop(context.scene, "editmodecolor", index=3, text='')
+            
+            # Channels
+            cc = rr.row(align=1)
+            cc.prop(scene, "editmodechannels", index=0, text='', icon='COLOR_RED', toggle=True)
+            cc.prop(scene, "editmodecolor", index=0, text='')
+            
+            cc = rr.row(align=1)
+            cc.prop(scene, "editmodechannels", index=1, text='', icon='COLOR_GREEN', toggle=True)
+            cc.prop(scene, "editmodecolor", index=1, text='')
+            
+            cc = rr.row(align=1)
+            cc.prop(scene, "editmodechannels", index=2, text='', icon='COLOR_BLUE', toggle=True)
+            cc.prop(scene, "editmodecolor", index=2, text='')
+            
+            cc = rr.row(align=1)
+            cc.prop(scene, "editmodechannels", index=3, text='', icon='FONT_DATA', toggle=True)
+            cc.prop(scene, "editmodecolor", index=3, text='')
             
             # Color Meta
-            row = col.row(align=1)
+            row = col.row(align=0)
             row.label(text = '%d,%d,%d,%d' % (col255[0],col255[1],col255[2], col255[3]) )
             
-            row.prop(context.scene, "editmodevalue", text='RGB Net', icon='WORLD_DATA')
+            row.prop(scene, "editmodevalue", text='RGB Net', icon='WORLD_DATA')
             
             row = col.row(align = 1)
             row.operator("dmr.vc_clear_alpha", icon='MATSPHERE', text="Clear Alpha")
@@ -220,6 +235,10 @@ def register():
     
     bpy.types.Scene.editmodevalue = bpy.props.FloatProperty(
         name="Paint Value", default=1, min=0, max=1, update=SyncEditModeEditValueToColor
+    )
+    
+    bpy.types.Scene.editmodechannels = bpy.props.BoolVectorProperty(
+        name="Paint Channels", size=4, default=(True, True, True, True)
     )
     
     bpy.types.Scene.vc_palette_display_width = bpy.props.IntProperty(
