@@ -42,7 +42,7 @@ class DMR_OP_FitMirrorModifierToUVEdge(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_FitMirrorModifierToUVEdge)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_FlipUVsAlongAnchor(bpy.types.Operator):
     """Flips selected UVs along anchor"""
@@ -80,85 +80,7 @@ class DMR_OP_FlipUVsAlongAnchor(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_FlipUVsAlongAnchor)
 
-# =============================================================================
-
-class DMR_OT_MatchMirrorUVs(bpy.types.Operator):
-    """Copies UVs of selected loops to loops mirrored along the X axis. Result can be offsetted and flipped."""
-    bl_idname = "dmr.match_mirror_uv"
-    bl_label = "Match Mirror UVs"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    offset : bpy.props.FloatVectorProperty(name="Offset", size=2, default=(0.0, 0.0))
-    flip : bpy.props.EnumProperty(name="Flip", items=(
-        ('NONE', 'None', "No flip"),
-        ('LEFT', 'Left', "Flip on left edge"),
-        ('RIGHT', 'Right', "Flip on right edge")
-    ))
-
-    @classmethod
-    def poll(cls, context):
-        return context.active_object is not None
-
-    def execute(self, context):
-        thresh = 0.0005
-        
-        offset = self.offset
-        
-        thresh = thresh*thresh
-        sqr = lambda x: (x*x)
-        MirroredDistance = lambda v1,v2: ( sqr(v2[0]+v1[0]) + sqr(v2[1]-v1[1]) + sqr(v2[2]-v1[2]) )
-        
-        bpy.ops.object.mode_set(mode='OBJECT')
-        for obj in context.selected_objects:
-            if obj.type != 'MESH':
-                continue
-            
-            uvlayer = obj.data.uv_layers.active
-            
-            loops = tuple(obj.data.loops)
-            vertices = tuple(obj.data.vertices)
-            polygons = tuple(obj.data.polygons)
-            
-            selectedpolys = tuple(p for p in obj.data.polygons if p.select)
-            polypairs = {
-                p1: p2 
-                for p1 in polygons if (p1.select and p1.center[0] > 0)
-                for p2 in polygons if (
-                    MirroredDistance(p1.center, p2.center) <= thresh
-                )
-            }
-            loopco = {l.index: vertices[l.vertex_index].co for l in loops}
-            
-            targetuvs = []
-            
-            for p1, p2 in polypairs.items():
-                for l1 in p1.loop_indices:
-                    for l2 in p2.loop_indices:
-                        if MirroredDistance(loopco[l1], loopco[l2]) <= thresh:
-                            targetuvs.append(uvlayer.data[l2])
-                            uvlayer.data[l2].uv = uvlayer.data[l1].uv
-                            break
-            
-            if targetuvs:
-                if self.flip == 'LEFT':
-                    point = min([l.uv[0] for l in targetuvs if l.uv[0] != 0.0])
-                    for l in targetuvs:
-                        l.uv[0] = point-(l.uv[0]-point)
-                
-                elif self.flip == 'RIGHT':
-                    point = max([l.uv[0] for l in targetuvs if l.uv[0] != 0.0])
-                    for l in targetuvs:
-                        l.uv[0] = point-(l.uv[0]-point)
-                
-                for uv in targetuvs:
-                    uv.uv[0] += offset[0]
-                    uv.uv[1] += offset[1]
-                
-        bpy.ops.object.mode_set(mode='EDIT')
-        return {'FINISHED'}
-classlist.append(DMR_OT_MatchMirrorUVs)
-
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_SplitAndAlignUVEnds(bpy.types.Operator):
     """Splits and aligns selected uv tris and quads"""
@@ -176,7 +98,7 @@ class DMR_OP_SplitAndAlignUVEnds(bpy.types.Operator):
             uvindex = {uv: i for i,uv in enumerate(uvdata)}
             polys = tuple(obj.data.polygons)
             targetloops = tuple([i for i, uv in enumerate(uvdata) if uv.select])
-            targetpolys = [p for p in polys if sum([1 for l in p.loop_indices if l in targetloops]) == p.loop_total ]
+            targetpolys = [p for p in polys if (not p.hide and p.select and sum([1 for l in p.loop_indices if l in targetloops]) == p.loop_total) ]
             
             Sqr = lambda x: x*x
             

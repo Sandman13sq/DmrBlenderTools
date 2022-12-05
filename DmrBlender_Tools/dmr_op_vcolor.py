@@ -771,7 +771,6 @@ class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_VertexColorGammaCorrect)
 
-
 # =============================================================================
 
 def register():

@@ -3,6 +3,8 @@ import bpy
 classlist = []
 
 # =============================================================================
+# OPERATORS
+# =============================================================================
 
 class DMR_OT_AddVertexGroup(bpy.types.Operator):
     """Adds vertex group to object with name parameter"""
@@ -46,7 +48,7 @@ class DMR_OT_AddVertexGroup(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_AddVertexGroup)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OT_RemoveVerticesFromVertexGroup(bpy.types.Operator):
     """Remove from vertex group"""
@@ -80,7 +82,7 @@ class DMR_OT_RemoveVerticesFromVertexGroup(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_RemoveVerticesFromVertexGroup)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_SelectByWeight(bpy.types.Operator):
     bl_label = "Select by Weight"
@@ -138,7 +140,7 @@ class DMR_OP_SelectByWeight(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_SelectByWeight)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_ClearWeights(bpy.types.Operator):
     bl_label = "Clear Groups From Selected"
@@ -166,7 +168,7 @@ class DMR_OP_ClearWeights(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_ClearWeights)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
     bl_label = "Remove Empty Vertex Groups"
@@ -227,7 +229,7 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_RemoveUnusedVertexGroups)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_RemoveRightVertexGroups(bpy.types.Operator):
     bl_label = "Remove Right Vertex Groups"
@@ -255,7 +257,7 @@ class DMR_OP_RemoveRightVertexGroups(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_RemoveRightVertexGroups)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_RemoveFromSelectedBones(bpy.types.Operator):
     bl_label = "Remove From Selected Bones"
@@ -307,7 +309,7 @@ class DMR_OP_RemoveFromSelectedBones(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_RemoveFromSelectedBones)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_AddMissingRightVertexGroups(bpy.types.Operator):
     bl_label = "Add Missing Mirror Groups"
@@ -351,7 +353,7 @@ class DMR_OP_AddMissingRightVertexGroups(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_AddMissingRightVertexGroups)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OP_MoveVertexGroupToEnd(bpy.types.Operator):
     bl_label = "Move Vertex Group to End"
@@ -392,178 +394,7 @@ class DMR_OP_MoveVertexGroupToEnd(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_MoveVertexGroupToEnd)
 
-# =============================================================================
-
-class DMR_OT_FixVertexGroupSides(bpy.types.Operator):
-    bl_label = "Fix Vertex Group Sides"
-    bl_idname = 'dmr.fix_vertex_group_sides'
-    bl_description = 'Sets the side suffix (.l, .r) of vertex groups for selected vertices'
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    method : bpy.props.EnumProperty(
-        name='Fix Method',
-        description='Method to change vertex groups',
-        items = (
-            ('FLIP', 'Flip Sides', 'Flips mirrored vertex group sides'),
-            ('LEFT', 'Force Left', 'Forces vertex groups to the left side'),
-            ('RIGHT', 'Force Right', 'Forces vertex groups to the right side'),
-            ('BOTH', 'Both Sides', 'Ensures vertices have weights for both sides'),
-            ),
-        default='FLIP'
-        )
-    
-    def execute(self, context):
-        lastobjectmode = bpy.context.active_object.mode
-        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
-        count = 0
-        
-        method = self.method
-        
-        oppositestr = {h+k: h+v for h in "._" for k,v in zip("lrLR", "rlRL")}
-        
-        for obj in context.selected_objects:
-            if obj.type == 'MESH':
-                vgroups = obj.vertex_groups
-                
-                # Find groups to fix
-                if method == 'FLIP' or method == 'BOTH': # All groups with a mirror suffix
-                    targetgroups = {
-                        vg.index: vg for vg in vgroups if sum([vg.name[-2:]==s for s in oppositestr.keys()])
-                    }
-                elif method == 'RIGHT': # Groups that end with an L
-                    targetgroups = {
-                        vg.index: vg for vg in vgroups if (vg.name[-1].lower()=='l' and sum([vg.name[-2:]==s for s in oppositestr.keys()]))
-                    }
-                elif method == 'LEFT': # Groups that end with an R
-                    targetgroups = {
-                        vg.index: vg for vg in vgroups if (vg.name[-1].lower()=='r' and sum([vg.name[-2:]==s for s in oppositestr.keys()]))
-                    }
-                
-                for v in [v for v in obj.data.vertices if v.select]:
-                    checkedvges = []
-                    for vge in v.groups:
-                        if vge in checkedvges:
-                            continue
-                        
-                        # Group is a mirror group
-                        if vge.group in targetgroups.keys():
-                            g1 = vgroups[vge.group]
-                            g2 = vgroups[g1.name[:-2]+oppositestr[g1.name[-2:]]]
-                            w1 = vge.weight
-                            
-                            checkedvges.append(vge)
-                            count += 1
-                            
-                            # Flip sides
-                            if method == 'FLIP':
-                                # Vertex has entry with opposite group
-                                vge2 = ([vge for vge in v.groups if vge.group == g2.index]+[None])[0]
-                                if vge2 != None:
-                                    w2 = vge2.weight
-                                    g1.add([v.index], w2, 'REPLACE')
-                                    g2.add([v.index], w1, 'REPLACE')
-                                    checkedvges.append(vge2)
-                                # Vertex only has one side
-                                else:
-                                    g1.remove([v.index])
-                                    g2.add([v.index], w1, 'REPLACE')
-                            # Both sides
-                            elif method == 'BOTH':
-                                # Vertex has entry with opposite group
-                                vge2 = ([vge for vge in v.groups if vge.group == g2.index]+[None])[0]
-                                if vge2 == None:
-                                    g2.add([v.index], w1, 'REPLACE')
-                            
-                            # Force Right/Left
-                            elif method == 'RIGHT' or method == 'LEFT':
-                                g1.remove([v.index])
-                                g2.add([v.index], w1, 'REPLACE')
-        
-        self.report({'INFO'}, "Fixed %s weights" % count)
-        
-        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
-            
-        return {'FINISHED'}
-classlist.append(DMR_OT_FixVertexGroupSides)
-
-# =============================================================================
-
-class DMR_OT_MatchMirrorGroups(bpy.types.Operator):
-    """Matches right side vertex weights with left weights"""
-    bl_idname = "dmr.match_mirror_groups"
-    bl_label = "Match Mirror Groups"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod
-    def poll(cls, context):
-        return context.active_object is not None
-    
-    def execute(self, context):
-        thresh = 0.01
-        
-        thresh = thresh*thresh
-        sqr = lambda x: (x*x)
-        MirroredDistance = lambda v1,v2: ( sqr(v2[0]+v1[0]) + sqr(v2[1]-v1[1]) + sqr(v2[2]-v1[2]) )
-        UpperLetters = lambda x: "".join([c for c in x if c in "QWERTYUIOPASDFGHJKLZXCVBNM"]) 
-        Digits = lambda x: "".join([c for c in x if c in "0123456789"]) 
-        
-        mode = context.active_object.mode
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-        for obj in context.selected_objects:
-            if obj.type != 'MESH':
-                continue
-            
-            vgroups = obj.vertex_groups
-            
-            loops = tuple(obj.data.loops)
-            vertices = tuple(obj.data.vertices)
-            polygons = tuple(obj.data.polygons)
-            
-            leftverts = tuple(set([vertices[i] for p in polygons if p.center[0] >= 0 for i in p.vertices]))
-            rightverts = tuple(set([vertices[i] for p in polygons if p.center[0] <= 0 for i in p.vertices]))
-            
-            vertexpairs = tuple(
-                (v1, v2)
-                for v1 in vertices
-                for v2 in vertices if (MirroredDistance(v1.co, v2.co) <= thresh)
-            )
-            
-            targetgroups = [vg1 for vg1 in vgroups if (vg1.name[-2:] == ".l")]
-            
-            # Create mirror groups
-            for vg1 in targetgroups:
-                break
-                if not sum([1 for vg2 in vgroups if (
-                    UpperLetters(vg2.name) == (UpperLetters(vg1.name)[:-1]+"R") and
-                    Digits(vg2.name) == Digits(vg1.name)
-                )]):
-                    vgroups.new(name=SwapBoneName(vg1.name))
-            
-            # Find group pairs
-            oppositegroup = {
-                vg1: vg2
-                for vg1 in vgroups if (vg1.name[-2:] == ".l")
-                for vg2 in vgroups if (
-                    vg2.name == vg1.name[:-2]+".r"
-                    )
-            }
-            
-            [vg2.remove(range(0, len(vertices))) for vg1, vg2 in oppositegroup.items()]
-            #[vg1.remove([v.index]) for v in rightverts for vg1 in targetgroups if v.co[0] < 0.0]
-            
-            for v1, v2 in vertexpairs:
-                for vge1 in v1.groups:
-                    vg1 = vgroups[vge1.group]
-                    if vg1 in oppositegroup.keys():
-                        vg2 = oppositegroup[vg1]
-                        vg2.add([v2.index], vge1.weight, 'REPLACE')
-           
-        bpy.ops.object.mode_set(mode=mode)
-        return {'FINISHED'}
-classlist.append(DMR_OT_MatchMirrorGroups)
-
-# =============================================================================
+# ---------------------------------------------------------------------------
 
 class DMR_OT_SetWeightByVertexStep(bpy.types.Operator):
     """Sets weight for each vertex by stepping from selected vertex"""
@@ -572,8 +403,8 @@ class DMR_OT_SetWeightByVertexStep(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     count : bpy.props.IntProperty(name="Step Count", min=0, default = 5)
-    weight_start : bpy.props.FloatProperty(name="Weight Start", min=0, max=1, default=0.0)
-    weight_end : bpy.props.FloatProperty(name="Weight End", min=0, max=1, default=1.0)
+    weight_start : bpy.props.FloatProperty(name="Weight Start", min=0, max=1, default=1.0)
+    weight_end : bpy.props.FloatProperty(name="Weight End", min=0, max=1, default=0.0)
     
     @classmethod
     def poll(cls, context):
