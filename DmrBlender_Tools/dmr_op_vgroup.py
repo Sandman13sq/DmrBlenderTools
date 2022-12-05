@@ -181,13 +181,18 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
         description = 'Ignore weights of 0 when checking if groups are empty'
         )
     
+    keep_sides : bpy.props.BoolProperty(
+        name = "Keep Mirrored Groups", default = True,
+        description = 'Keeps mirror group if one side is used.'
+        )
+    
     def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
+        return context.window_manager.invoke_props_dialog(self)
     
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "remove_zero")
+        layout.prop(self, "keep_sides")
     
     def execute(self, context):
         for obj in context.selected_objects:
@@ -214,6 +219,20 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
                         usedgroups.append(vgroups[m.vertex_group].index)
                 except:
                     []
+            
+            usedgroups = list(set(usedgroups))
+            if self.keep_sides:
+                basenames = [
+                    vg.name[:-4] if sum([1 for c in vg.name[-3:] if c in "0123456789"]) == 3 else vg.name
+                    for vg in vgroups
+                ]
+                
+                usedgroups += [
+                    vg2
+                    for vg1 in usedgroups if (basenames[vg1][-2] in "-._" and basenames[vg1][-1].upper() in "LR")
+                    for vg2 in usedgroups if (vg2 != vg1 and basenames[vg2][:-1] == basenames[vg1][:-1] and basenames[vg2][-1].upper() in "LR")
+                ]
+            
             usedgroups = tuple(set(usedgroups))
             unusedgroupnames = [vg.name for vg in vgroups if vg.index not in usedgroups]
             
