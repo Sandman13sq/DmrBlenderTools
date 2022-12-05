@@ -38,7 +38,7 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
         if obj:
             if obj.mode == 'EDIT':
                 if obj.type == 'MESH':
-                    m = ([None]+[m for m in obj.modifiers if m.type == 'MIRROR'])[-1]
+                    m = ([m for m in obj.modifiers if m.type == 'MIRROR']+[None])[0]
                     if m:
                         r.prop(m, 'use_clip', text="", icon='NODE_SIDE')
         
@@ -60,15 +60,13 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
             if obj.mode == 'EDIT':
                 layout.prop(bpy.context.scene.tool_settings, 'proportional_size')
             
-            if obj.animation_data:
-                #layout.template_ID(obj.animation_data, "action", new="action.new", unlink="action.unlink")
-                r = layout.row()
-                r.prop(obj, 'active_action')
-                r.prop(context.scene, 'sync_action_frame_range', text='', toggle=True, icon='FILE_REFRESH')
-            if obj.find_armature() and obj.find_armature().animation_data:
-                r = layout.row()
-                r.prop(obj.find_armature(), 'active_action', text='Parent')
-                r.prop(context.scene, 'sync_action_frame_range', text='', toggle=True, icon='FILE_REFRESH')
+            for armobj in [obj, obj.find_armature()]:
+                if armobj and armobj.animation_data != None:
+                    r = layout.row()
+                    r.prop(armobj, 'active_action')
+                    if armobj.active_action != armobj.animation_data.action:
+                        r.prop(armobj, 'op_active_action_sync', text='', toggle=True, icon='COPYDOWN')
+                    r.prop(context.scene, 'sync_action_frame_range', text='', toggle=True, icon='FILE_REFRESH')
         
         row = layout.row(align=1)
         row.scale_x = 2.0
@@ -82,9 +80,15 @@ def ActionChange(self, context):
     action = self.active_action
     self.animation_data.action = action
     
-    if context.scene.sync_action_frame_range and action.use_frame_range:
-        context.scene.frame_start = int(action.frame_start)
-        context.scene.frame_end = int(action.frame_end)
+    if action:
+        if context.scene.sync_action_frame_range and action.use_frame_range:
+            context.scene.frame_start = int(action.frame_start)
+            context.scene.frame_end = int(action.frame_end)
+
+def ActionChangeSync(self, context):
+    if self.op_active_action_sync:
+        self.active_action = self.animation_data.action
+        self.op_active_action_sync = False
 
 def register():
     for c in classlist:
@@ -92,6 +96,10 @@ def register():
     
     bpy.types.Object.active_action = bpy.props.PointerProperty(
         name="Action", type=bpy.types.Action, update=ActionChange
+    )
+    
+    bpy.types.Object.op_active_action_sync = bpy.props.BoolProperty(
+        name="Sync Action", default=False, update=ActionChangeSync
     )
     
     bpy.types.Scene.sync_action_frame_range = bpy.props.BoolProperty(
