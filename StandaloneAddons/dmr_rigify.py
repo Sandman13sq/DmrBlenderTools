@@ -45,6 +45,35 @@ class DMR_OT_Rigify_FindLayerInfo(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_Rigify_FindLayerInfo)
 
+# -------------------------------------------------------------------------------
+
+class DMR_OT_Rigify_RetargetMetaDrivers(bpy.types.Operator):
+    bl_idname = "dmr.rigify_retarget_drivers"
+    bl_label = "Retarget Drivers"
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == 'ARMATURE'
+
+    def execute(self, context):
+        print("> Retargeting Drivers...")
+        rigobj =  bpy.context.active_object
+
+        for obj in rigobj.children:
+            if not obj.animation_data:
+                continue
+            
+            for fc in obj.animation_data.drivers:
+                for v in fc.driver.variables:
+                    for t in v.targets:
+                        meta = t.id
+                        if meta and meta.type == 'ARMATURE' and meta.data.get('rigify_target_rig', None) == rigobj:
+                            print("%s: %s -> %s" % (obj.name, t.id.name, rigobj.name))
+                            t.id = rigobj
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_Rigify_RetargetMetaDrivers)
+
 # --------------------------------------------------------------------------------
 
 class DMR_OT_ArmatureSetLayerVisibility(bpy.types.Operator):
@@ -174,7 +203,9 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
         layout = self.layout
         outrig = context.object
         
-        layout.operator('dmr.rigify_find_layer_info')
+        r = layout.row()
+        r.operator('dmr.rigify_find_layer_info')
+        r.operator('dmr.rigify_retarget_drivers')
         
         if not outrig.data.get('rigify_layer_data', None):
             return
@@ -239,11 +270,20 @@ classlist.append(DMR_PT_Rigify_Pose)
 
 # =============================================================================
 
-class DMR_PT_Rigify_Meta(bpy.types.Panel):
-    bl_label = "Rigify Layers"
+class RigifyPanelSuper(bpy.types.Panel):
+    bl_label = "Rigify Bone"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Item" # Name of sidebar
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE' and obj.data.rigify_layers
+    
+
+class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
+    bl_label = "Rigify Layers"
     
     @classmethod
     def poll(self, context):
@@ -324,8 +364,18 @@ class DMR_PT_Rigify_Meta(bpy.types.Panel):
             op = cc.operator('dmr.rigify_mete_move_row', text='', icon='TRIA_DOWN')
             op.row = lyrdata.row
             op.direction = 'DOWN'
-        
 classlist.append(DMR_PT_Rigify_Meta)
+
+
+class DMR_PT_Rigify_Meta_Bone(RigifyPanelSuper, bpy.types.Panel):
+    bl_label = "Rigify Bone"
+    bl_parent_id = 'DMR_PT_Rigify_Meta'
+    
+    def draw(self, context):
+        if context.object.mode == 'POSE':
+            bpy.types.BONE_PT_rigify_buttons.draw(self, context)
+classlist.append(DMR_PT_Rigify_Meta_Bone)
+
 
 # =============================================================================
 
