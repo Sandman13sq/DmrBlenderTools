@@ -3,7 +3,12 @@ import os
 
 classlist = []
 
-# =============================================================================
+def Items_ObjectUVLayers(s, context):
+    return (
+        (x.name, x.name, x.name) for x in context.object.data.uv_layers
+    )
+
+# =====================================================================================================
 
 class DMR_OP_FitMirrorModifierToUVEdge(bpy.types.Operator):
     """Sets the \"Mirror U\" value to object UV bounds"""
@@ -143,7 +148,42 @@ class DMR_OP_SplitAndAlignUVEnds(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_SplitAndAlignUVEnds)
 
-# =============================================================================
+# ---------------------------------------------------------------------------
+
+class DMR_OP_CopyUVLayerLoops(bpy.types.Operator):
+    """Copies uvs from one layer to another"""
+    bl_idname = "dmr.copy_uv_layer_loops"
+    bl_label = "Copy UV Layer Loops"
+    bl_options = {'REGISTER', 'UNDO'}   
+    
+    source : bpy.props.EnumProperty(name="Source Layer", items=Items_ObjectUVLayers)
+    target : bpy.props.EnumProperty(name="Target Layer", items=Items_ObjectUVLayers)
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'MESH' and context.object.mode == 'EDIT'
+    
+    def execute(self, context):
+        mode = context.active_object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        for mesh in list(set([obj.data for obj in context.selected_objects if obj.type == 'MESH'])):
+            uvlayers = mesh.uv_layers
+            
+            if self.source in uvlayers.keys() and self.target in uvlayers.keys():
+                sourcelayer = uvlayers[self.source].data
+                targetlayer = uvlayers[self.target].data
+                
+                targetloops = tuple([l for p in mesh.polygons if (p.select and not p.hide) for l in p.loop_indices])
+                for l in targetloops:
+                    if sourcelayer[l].select:
+                        targetlayer[l].uv = sourcelayer[l].uv
+        
+        bpy.ops.object.mode_set(mode=mode)
+        return {'FINISHED'}
+classlist.append(DMR_OP_CopyUVLayerLoops)
+
+# =====================================================================================================
 
 def register():
     for c in classlist:
