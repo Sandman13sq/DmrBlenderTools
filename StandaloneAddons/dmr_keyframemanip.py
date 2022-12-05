@@ -124,7 +124,7 @@ class DMR_OP_KeyframeManip_WaveCreate(bpy.types.Operator):
     )
     
     frame_offset : bpy.props.FloatProperty(
-        name="Frame Offset", default=0, step=1, min=1,
+        name="Frame Offset", default=0, step=1,
         description="Total offset of wave",
     )
     
@@ -139,7 +139,7 @@ class DMR_OP_KeyframeManip_WaveCreate(bpy.types.Operator):
     )
     
     frequency : bpy.props.IntProperty(
-        name="Frequency", default=1,
+        name="Frequency", default=1, min=1,
         description="Number of times wave occurs in action",
     )
     
@@ -152,6 +152,53 @@ class DMR_OP_KeyframeManip_WaveCreate(bpy.types.Operator):
     scale : bpy.props.FloatVectorProperty(name="Scale", size=6, default=[1.0]*6)
     scale_toggle : bpy.props.BoolVectorProperty(name="Scale Toggle", size=6, default=[True]*6)
     scale_enabled : bpy.props.BoolProperty(name="Scale Enabled", default=True)
+    
+    # Update --------------------------------------------------------------------------------
+    mutex : bpy.props.BoolProperty(default=False)
+    
+    def Update(self, context):
+        if self.mutex:
+            return
+        
+        self.mutex = True
+        
+        if self.op_peak_to_trough:
+            self.op_peak_to_trough = False
+            r1 = (3,6)
+            r2 = (0,3)
+            self.rotation[r1[0]:r1[1]] = self.rotation[r2[0]:r2[1]]
+            self.rotation_toggle[r1[0]:r1[1]] = self.rotation_toggle[r2[0]:r2[1]]
+            
+            self.scale[r1[0]:r1[1]] = self.scale[r2[0]:r2[1]]
+            self.scale_toggle[r1[0]:r1[1]] = self.scale_toggle[r2[0]:r2[1]]
+        
+        if self.op_trough_to_peak:
+            self.op_trough_to_peak = False
+            r1 = (0,3)
+            r2 = (3,6)
+            self.rotation[r1[0]:r1[1]] = self.rotation[r2[0]:r2[1]]
+            self.rotation_toggle[r1[0]:r1[1]] = self.rotation_toggle[r2[0]:r2[1]]
+            
+            self.scale[r1[0]:r1[1]] = self.scale[r2[0]:r2[1]]
+            self.scale_toggle[r1[0]:r1[1]] = self.scale_toggle[r2[0]:r2[1]]
+        
+        if self.op_swap_arcs:
+            self.op_swap_arcs = False
+            indices = (3,4,5,0,1,2)
+            
+            self.rotation = [self.rotation[i] for i in indices]
+            self.rotation_toggle = [self.rotation_toggle[i] for i in indices]
+            
+            self.scale = [self.scale[i] for i in indices]
+            self.scale_toggle = [self.scale_toggle[i] for i in indices]
+        
+        self.mutex = False
+    
+    op_peak_to_trough : bpy.props.BoolProperty(default=False, update=Update)
+    op_trough_to_peak : bpy.props.BoolProperty(default=False, update=Update)
+    op_swap_arcs : bpy.props.BoolProperty(default=False, update=Update)
+    
+    # ----------------------------------------------------------------------------------------
     
     def draw(self, context):
         layout = self.layout
@@ -171,7 +218,15 @@ class DMR_OP_KeyframeManip_WaveCreate(bpy.types.Operator):
         # Peak
         for header, indices in (("Peak", (0,1,2)), ("Trough", (3,4,5))):
             b = layout.box().column(align=1)
-            b.label(text="== %s ==" % header)
+            
+            r = b.row()
+            r.label(text="== %s ==" % header)
+            if indices[0] == 0:
+                r.prop(self, 'op_peak_to_trough', text="Copy To Trough", icon='TRIA_DOWN')
+            else:
+                r.prop(self, 'op_trough_to_peak', text="Copy To Peak", icon='TRIA_UP')
+            
+            r.prop(self, 'op_swap_arcs', text="", icon='UV_SYNC_SELECT')
             
             r = b.row(align=1)
             r.enabled = self.rotation_enabled
