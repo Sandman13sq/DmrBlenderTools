@@ -187,6 +187,8 @@ class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
 classlist.append(DMR_OT_MoveRigifyLayerRow)
 
 # =============================================================================
+# PANELS
+# =============================================================================
 
 class DMR_PT_Rigify_Pose(bpy.types.Panel):
     bl_label = "Rigify Layers"
@@ -268,7 +270,7 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
             rr.operator('dmr.armature_layer_visibility', text='', icon='VIEWZOOM').layers = [x==lyrindex for x in range(0, 32)]
 classlist.append(DMR_PT_Rigify_Pose)
 
-# =============================================================================
+# ---------------------------------------------------------------------------------
 
 class RigifyPanelSuper(bpy.types.Panel):
     bl_label = "Rigify Bone"
@@ -280,7 +282,6 @@ class RigifyPanelSuper(bpy.types.Panel):
     def poll(self, context):
         obj = context.object
         return obj and obj.type == 'ARMATURE' and obj.data.rigify_layers
-    
 
 class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
     bl_label = "Rigify Layers"
@@ -366,6 +367,7 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
             op.direction = 'DOWN'
 classlist.append(DMR_PT_Rigify_Meta)
 
+# ---------------------------------------------------------------------------------
 
 class DMR_PT_Rigify_Meta_Bone(RigifyPanelSuper, bpy.types.Panel):
     bl_label = "Rigify Bone"
