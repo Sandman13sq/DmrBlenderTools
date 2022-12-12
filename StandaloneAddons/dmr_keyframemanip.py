@@ -472,6 +472,28 @@ classlist.append(DMR_OP_KeyframeManip_RandomFrame)
 
 # =============================================================================
 
+class DMR_OP_KeyframeManip_AdjustWave(bpy.types.Operator):
+    bl_label = "Keyframe Manip - Adjust Wave Amplitude"
+    bl_idname = 'dmr.keyframe_manip_adjust_wave'
+    bl_description = '';
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    midpoint : bpy.props.FloatProperty(name="Midpoint", default=0.5, min=0.0, max=1.0)
+    
+    def execute(self, context):
+        action = obj.animation_data.action
+        selectedbonenames = [b.name for b in bones if b.select]
+        
+        midpoint = self.midpoint
+        
+        for fc in tuple(action.fcurves):
+            if len(fc.keyframe_points) == 3:
+                k = tuple(keyframe_points)
+                k[1].co_ui[0] = k[0].co_ui[0]+(k[0].co_ui[1]-k[0].co_ui[0])*midpoint
+classlist.append(DMR_OP_KeyframeManip_AdjustWave)
+
+# =============================================================================
+
 class DMR_OP_BoneChainMove(bpy.types.Operator):
     bl_idname = "dmr.bone_chain_move"
     bl_label = "Move Bone Chain"
