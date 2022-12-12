@@ -325,6 +325,157 @@ classlist.append(DMR_OT_SuperSymmetrize)
 # OPERATORS
 # ==========================================================================================================
 
+class DMR_OT_SuperSynchronize(bpy.types.Operator):
+    """Synchronizes vertex data of selected vertices with it's closest non-selected mirror vertex. Does not create new geometry. (see Super Symmetrize)"""
+    bl_idname = "dmr.super_synchronize"
+    bl_label = "Super Synchronize"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    vertices : bpy.props.BoolProperty(name="Synchronize Vertices", default=True)
+    weights : bpy.props.BoolProperty(name="Synchronize Weights", default=True)
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'MESH'
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        negxvec = bpy.data.objects[0].location.copy()
+        negxvec[:] = (-1,1,1)
+        
+        vertexhits = 0
+        weighthits = 0
+        
+        for obj in [obj for obj in context.selected_objects if obj.type == 'MESH']:
+            mesh = obj.data
+            vertices = tuple(mesh.vertices)
+            
+            selectedverts = [v for v in vertices if v.select]
+            nonselectedverts = [v for v in vertices if not v.select]
+            vertexpairs = []
+            
+            # Find Vertex Pairs
+            for v1 in selectedverts:
+                candidates = nonselectedverts[:]
+                candidates.sort(key=lambda v2: (v2.co-(v1.co*negxvec)).length)
+                v2 = candidates[0]
+                
+                if (v2.co-(v1.co*negxvec)).length <= 0.01:
+                    vertexpairs.append((v1, v2))
+            
+            # Find Group Pairs
+            vgrouppairs = []
+            if self.weights:
+                vgroups = obj.vertex_groups
+                BaseName = lambda x: x[:-4] if ( len(x) > 4 and sum(1 for c in x[:-3] if c in '0123456789')==3 and x[-4] in '-._' ) else x
+                vgrouppairs = {
+                    vg1: vg2
+                    for vg1 in vgroups if (
+                        not vg1.lock_weight and
+                        BaseName(vg1.name)[-2] in '-._' and 
+                        BaseName(vg1.name)[-1] in 'LRlr' 
+                    )
+                    for vg2 in vgroups if (
+                        not vg2.lock_weight and
+                        BaseName(vg2.name)[-2] in '-._' and
+                        BaseName(vg2.name)[-1] == {k:v for k,v in zip('LRlr', 'RLrl')}[BaseName(vg1.name)[-1]] and
+                        BaseName(vg2.name)[:-1] == BaseName(vg1.name)[:-1]
+                    )
+                }
+            
+            for vg1, vg2 in vgrouppairs.items():
+                print(vg1.name, vg2.name)
+            
+            # Synchronize
+            for v1, v2 in vertexpairs:
+                # Positions
+                if self.vertices and v2.co != v1.co*negxvec:
+                    v2.co[:] = v1.co*negxvec
+                    vertexhits += 1
+                
+                # Weights
+                if self.weights:
+                    #[vg2.remove([v2.index]) for vg2 in [vgroups[vge2.group] for vge2 in v2.groups] if not vg2.lock_weight]
+                    
+                    for vge1 in v1.groups:
+                        vg1 = vgroups[vge1.group]
+                        
+                        # Mirror Group
+                        if vg1 in vgrouppairs.keys():
+                            vg2 = vgrouppairs[vg1]
+                            vg1.remove([v2.index])
+                            vg2.add([v2.index], vge1.weight, 'REPLACE')
+                        # Non-Mirror Group
+                        else:
+                            vg1.add([v2.index], vge1.weight, 'REPLACE')
+                    
+                    weighthits += 1
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        if vertexhits == 0 and weighthits == 0:
+            self.report({'INFO'}, "No Vertices Matched")
+        else:
+            self.report({'INFO'}, "%d Positions Updated | %d Weights Matched" % (vertexhits, weighthits))
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_SuperSynchronize)
+    
+
+class DMR_OT_MatchMirrorVertices(bpy.types.Operator):
+    """Synchronizes mirror positions of selected vertices with it's closest mirror vertex."""
+    bl_idname = "dmr.match_mirror_vertices"
+    bl_label = "Match Mirror Vertex Positions"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        negxvec = bpy.data.objects[0].location.copy()
+        negxvec[:] = (-1,1,1)
+        
+        hits = 0
+        
+        for mesh in [obj.data for obj in context.selected_objects if obj.type == 'MESH']:
+            vertices = tuple(mesh.vertices)
+            
+            selectedverts = [v for v in vertices if v.select]
+            nonselectedverts = [v for v in vertices if not v.select]
+            vertexpairs = []
+            
+            for v1 in selectedverts:
+                candidates = nonselectedverts[:]
+                candidates.sort(key=lambda v2: (v2.co-(v1.co*negxvec)).length)
+                v2 = candidates[0]
+                
+                if (v2.co-(v1.co*negxvec)).length <= 0.01:
+                    vertexpairs.append((v1, v2))
+            
+            for v1, v2 in vertexpairs:
+                if v2.co != v1.co*negxvec:
+                    hits += 1
+                    v2.co[:] = v1.co*negxvec
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        if hits > 0:
+            self.report({'INFO'}, "%d Vertices Matched" % hits)
+        else:
+            self.report({'INFO'}, "No Vertices Matched")
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_MatchMirrorVertices)
+
+# ------------------------------------------------------------------
+
 class DMR_OT_MatchMirrorUVs(bpy.types.Operator):
     """Copies UVs of selected loops to loops mirrored along the X axis. Result can be offsetted and flipped."""
     bl_idname = "dmr.match_mirror_uv"
@@ -421,12 +572,6 @@ class DMR_OT_MatchMirrorGroups(bpy.types.Operator):
     
     def execute(self, context):
         thresh = 0.01
-        
-        thresh = thresh*thresh
-        sqr = lambda x: (x*x)
-        MirroredDistance = lambda v1,v2: ( sqr(v2[0]+v1[0]) + sqr(v2[1]-v1[1]) + sqr(v2[2]-v1[2]) )
-        UpperLetters = lambda x: "".join([c for c in x if c in "QWERTYUIOPASDFGHJKLZXCVBNM"]) 
-        Digits = lambda x: "".join([c for c in x if c in "0123456789"]) 
         
         mode = context.active_object.mode
         bpy.ops.object.mode_set(mode='OBJECT')
