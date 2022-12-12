@@ -527,6 +527,11 @@ class DMR_OP_QuickDirtyColors(bpy.types.Operator):
     bl_description = "Creates new vertex color slot with dirty vertex colors"
     bl_options = {'REGISTER', 'UNDO'}
     
+    dirt_only : bpy.props.BoolProperty(name="Dirt Only", default=True)
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
     def execute(self, context):
         bpy.ops.object.mode_set(mode = 'OBJECT')
         
@@ -554,7 +559,7 @@ class DMR_OP_QuickDirtyColors(bpy.types.Operator):
                 bpy.ops.paint.vertex_color_brightness_contrast(brightness=100) # Clear with White
                 bpy.ops.paint.vertex_color_dirt(
                     blur_strength=1, blur_iterations=1, 
-                    clean_angle=3.14159, dirt_angle=0, dirt_only=False, normalize=True)
+                    clean_angle=3.14159, dirt_angle=0, dirt_only=self.dirt_only, normalize=True)
 
                 bpy.ops.paint.vert_select_all(action='DESELECT')
                 
