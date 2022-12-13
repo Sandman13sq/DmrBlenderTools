@@ -459,6 +459,75 @@ class DMR_OT_SetWeightByVertexStep(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_SetWeightByVertexStep)
 
+# ---------------------------------------------------------------------------
+
+class WeightChecklist_Group(bpy.types.PropertyGroup):
+    name : bpy.props.StringProperty(name='Vertex Group', default="")
+    enabled : bpy.props.BoolProperty(name='Enabled', default=True)
+classlist.append(WeightChecklist_Group)
+
+class DMR_OP_WeightChecklist(bpy.types.Operator):
+    bl_label = "Weight Checklist"
+    bl_idname = 'dmr.weight_checklist'
+    bl_description = 'Enable/Disable weights from selected vertices via checklist'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    groups : bpy.props.CollectionProperty(name="Groups", type=WeightChecklist_Group)
+    
+    def invoke(self, context, event):
+        bpy.ops.object.mode_set(mode='OBJECT') # Update selected
+        
+        groupnames = [
+            obj.vertex_groups[vge.group].name
+            for obj in context.selected_objects if obj.type == 'MESH'
+            for v in obj.data.vertices if v.select
+            for vge in v.groups
+        ]
+        
+        #groupnames.sort(key=lambda x: groupnames.count(x))
+        groupnames = list(set(groupnames))
+        groupnames.sort(key=lambda x: x)
+        
+        self.groups.clear()
+        for name in groupnames:
+            self.groups.add().name = name
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        c = layout.column(align=1)
+        
+        for group in self.groups:
+            c.prop(group, 'enabled', text=group.name)
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT') # Update selected
+        vertices = tuple([
+            v.index
+            for obj in context.selected_objects if obj.type == 'MESH'
+            for v in obj.data.vertices if v.select
+        ])
+        
+        targetgroupnames = [g.name for g in self.groups if not g.enabled]
+        targetgroups = [
+            vg
+            for obj in context.selected_objects if obj.type == 'MESH'
+            for vg in obj.vertex_groups if vg.name in targetgroupnames
+        ]
+        
+        [
+            vg.remove(vertices)
+            for vg in targetgroups
+        ]
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+            
+        return {'FINISHED'}
+classlist.append(DMR_OP_WeightChecklist)
+
 # =============================================================================
 
 def register():
