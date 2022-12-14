@@ -524,13 +524,15 @@ classlist.append(DMR_OP_SetEditModeVCColor)
 class DMR_OP_QuickDirtyColors(bpy.types.Operator):
     bl_idname = "dmr.quick_n_dirty"
     bl_label = "Quick Dirty Vertex Colors"
-    bl_description = "Creates new vertex color slot with dirty vertex colors"
+    bl_description = "Dirty vertex colors for selected objects"
     bl_options = {'REGISTER', 'UNDO'}
     
+    blur_strength : bpy.props.FloatProperty(name="Blur Strength", default=1.0)
+    blur_iterations : bpy.props.IntProperty(name="Blur Iterations", default=1)
+    clean_angle : bpy.props.FloatProperty(name="Highlight Angle", default=3.14, subtype='ANGLE')
+    dirt_angle : bpy.props.FloatProperty(name="Dirt Angle", default=3.14/18.0, subtype='ANGLE')
     dirt_only : bpy.props.BoolProperty(name="Dirt Only", default=True)
-    
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+    normalize : bpy.props.BoolProperty(name="Normalize", default=False)
     
     def execute(self, context):
         bpy.ops.object.mode_set(mode = 'OBJECT')
@@ -543,23 +545,27 @@ class DMR_OP_QuickDirtyColors(bpy.types.Operator):
             if obj.type == 'MESH':
                 # Get 'dirty' group
                 vcolors = obj.data.vertex_colors
-                if 'dirty' not in vcolors.keys():
+                if not vcolors:
                     vcolors.new(name = 'dirty')
-                vcolorgroup = vcolors['dirty']
-                vcolors.active_index = vcolors.keys().index('dirty')
+                vcolorgroup = vcolors.active
                 
                 # Set dirt
                 bpy.context.view_layer.objects.active = obj
                 bpy.ops.object.mode_set(mode = 'VERTEX_PAINT')
                 oldselmode = bpy.context.object.data.use_paint_mask_vertex
                 bpy.context.object.data.use_paint_mask_vertex = True
-                selected = [x for x in obj.data.vertices if x.select]
+                selected = tuple([x for x in obj.data.vertices if x.select])
                 
                 bpy.ops.paint.vert_select_all(action='SELECT')
                 bpy.ops.paint.vertex_color_brightness_contrast(brightness=100) # Clear with White
                 bpy.ops.paint.vertex_color_dirt(
-                    blur_strength=1, blur_iterations=1, 
-                    clean_angle=3.14159, dirt_angle=0, dirt_only=self.dirt_only, normalize=True)
+                    blur_strength=self.blur_strength, 
+                    blur_iterations=self.blur_iterations, 
+                    clean_angle=self.clean_angle, 
+                    dirt_angle=self.dirt_angle,
+                    dirt_only=self.dirt_only, 
+                    normalize=self.normalize
+                    )
 
                 bpy.ops.paint.vert_select_all(action='DESELECT')
                 
