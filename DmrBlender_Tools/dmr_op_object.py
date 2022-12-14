@@ -190,74 +190,75 @@ classlist.append(DMR_OP_SyncActiveMaterial)
 
 # =============================================================================
 
-class DMR_OP_SyncUVLayers(bpy.types.Operator):
-    bl_label = "Sync UV Layers by Name"
-    bl_idname = 'dmr.sync_uv_name'
-    bl_description = 'Matches active and selected uv layers of selected objects to active object by name'
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod 
-    def poll(self, context):
-        active = context.active_object
-        return active and active.type == 'MESH' and active.data.uv_layers
-    
-    def execute(self, context):
-        active = context.active_object
-        selectname = active.data.uv_layers.active.name
-        rendername = [x for x in active.data.uv_layers if x.active_render][0].name
-        
-        for obj in context.selected_objects:
-            if obj.type == 'MESH' and obj.data.uv_layers:
-                uvlayers = obj.data.uv_layers
-                if rendername in [x.name for x in uvlayers]:
-                    uvlayers[rendername].active_render = True
-                if selectname in [x.name for x in uvlayers]:
-                    uvlayers.active = uvlayers[selectname]
-        
-        return {'FINISHED'}
-classlist.append(DMR_OP_SyncUVLayers)
-
-# =============================================================================
-
-class DMR_OP_SyncVCLayers(bpy.types.Operator):
+class DMR_OP_SyncMeshDataLayers(bpy.types.Operator):
     bl_label = "Sync Vertex Color Layers by Name"
-    bl_idname = 'dmr.sync_vc_name'
-    bl_description = 'Matches active and selected vertex color layers of selected objects to active object by name'
+    bl_idname = 'dmr.sync_mesh_data_layers'
+    bl_description = 'Matches active and selected mesh data layers of selected objects to active object by name'
     bl_options = {'REGISTER', 'UNDO'}
+    
+    colors : bpy.props.BoolProperty(name="Sync Colors", default=True)
+    uvs : bpy.props.BoolProperty(name="Sync UVs", default=True)
+    groups : bpy.props.BoolProperty(name="Sync Groups", default=False)
     
     @classmethod 
     def poll(self, context):
         active = context.active_object
-        return active and active.type == 'MESH' and active.data.vertex_colors
+        return active and active.type == 'MESH'
     
     def execute(self, context):
+        # Active
         active = context.active_object
         
-        if bpy.app.version >= (3, 2, 2):
-            selectname = active.data.color_attributes.active_color.name
-            rendername = active.data.color_attributes.active.name
-        else:
-            selectname = active.data.vertex_colors.active.name
-            rendername = [x for x in active.data.vertex_colors if x.active_render][0].name
+        vcname = (
+            active.data.color_attributes.active_color.name,
+            active.data.color_attributes.active.name
+        ) if bpy.app.version >= (3, 2, 2) else (
+            active.data.vertex_colors.active.name,
+            [x for x in active.data.vertex_colors if x.active_render][0].name
+        )
         
+        uvname = (
+            active.data.uv_layers.active.name,
+            [x for x in active.data.uv_layers if x.active_render][0].name
+        )
+        
+        groupname = active.vertex_groups.active.name
+        
+        # Selcted
         for obj in context.selected_objects:
             if obj.type == 'MESH':
+                # Group
+                if self.groups:
+                    if groupname in obj.vertex_groups.keys():
+                        obj.vertex_groups.active = obj.vertex_groups[groupname]
+                
                 mesh = obj.data
-                if bpy.app.version >= (3, 2, 2):
-                    vcolors = mesh.color_attributes
-                    if rendername in [x.name for x in vcolors]:
-                        vcolors.active = vcolors[rendername]
-                    if selectname in [x.name for x in vcolors]:
-                        vcolors.active_color = vcolors[selectname]
-                else:
-                    vcolors = obj.data.vertex_colors
-                    if rendername in [x.name for x in vcolors]:
-                        vcolors[rendername].active_render = True
-                    if selectname in [x.name for x in vcolors]:
-                        vcolors.active = vcolors[selectname]
+                # Color
+                if self.colors:
+                    if bpy.app.version >= (3, 2, 2):
+                        vcolors = mesh.color_attributes
+                        if vcname[0] in vcolors.keys():
+                            vcolors.active_color = vcolors[vcname[0]]
+                        if vcname[1] in vcolors.keys():
+                            vcolors.active = vcolors[vcname[1]]
+                    
+                    else:
+                        vcolors = obj.data.vertex_colors
+                        if vcname[0] in vcolors.keys():
+                            vcolors.active = vcolors[vcname[0]]
+                        if vcname[1] in vcolors.keys():
+                            vcolors[vcname[1]].active_render = True
+                
+                # UVs
+                if self.uvs:
+                    uvlayers = obj.data.uv_layers
+                    if uvname[0] in uvlayers.keys():
+                        uvlayers.active = uvlayers[uvname[0]]
+                    if uvname[1] in uvlayers.keys():
+                        uvlayers[uvname[1]].active_render = True
         
         return {'FINISHED'}
-classlist.append(DMR_OP_SyncVCLayers)
+classlist.append(DMR_OP_SyncMeshDataLayers)
 
 # =============================================================================
 
