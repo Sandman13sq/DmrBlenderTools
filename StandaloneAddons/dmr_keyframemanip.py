@@ -24,7 +24,9 @@ def GetBoneChain(b):
 
 classlist = []
 
-# =============================================================================
+'# =========================================================================================================================='
+'# OPERATORS'
+'# =========================================================================================================================='
 
 class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
     bl_label = "Keyframe Manip - Wave"
@@ -33,18 +35,18 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     channel_shift: bpy.props.IntProperty(
-        name="Channel Shift", default=1,
+        name="Chain Shift", default=1,
         description="Number of frames to shift by chain index",
     )
     
     position_shift: bpy.props.IntProperty(
-        name="Position Shift", default=1,
+        name="Keyframe Shift", default=1,
         description="Number of frames to shift by down the chain",
     )
     
-    undo_wave: bpy.props.BoolProperty(
-        name="Undo Wave", default=False,
-        description="Negates values to undo a previous wave operation",
+    overwrite : bpy.props.BoolProperty(
+        name="Overwrite", default=False,
+        description="Anchors values to lowest keyframe before changing wave",
     )
     
     def execute(self, context):
@@ -55,6 +57,7 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         
         obj.update_from_editmode()
         
+        # Find chains
         chains = [
             [bones[b.name] for b in c.bones if bones[b.name].select]
             for c in armature.bone_chains
@@ -76,36 +79,38 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         
         chains = [c for c in chains if len(c)]
         
+        # Find curves
         action = obj.animation_data.action
-        fcurves = action.fcurves
-        fcurvemap = {}
+        fcurves = tuple(action.fcurves)
         
-        for fc in fcurves:
-            name = fc.data_path
-            name = name[name.find('"')+1: name.rfind('"')]
-            if name not in fcurvemap:
-                fcurvemap[name] = []
-            fcurvemap[name].append(fc)
+        fcurvebundles = {
+            b.name: tuple([fc for fc in fcurves if '"'+b.name+'"' in fc.data_path if (not fc.hide and not fc.lock)])
+            for b in usedbones
+        }
         
         channel_shift = self.channel_shift
         position_shift = self.position_shift
         
-        if self.undo_wave:
-            channel_shift = -channel_shift
-            position_shift = -position_shift
+        foffset = 0
+        if self.overwrite:
+            foffset += min([k.co_ui[0] for bundle in fcurvebundles.values() for fc in bundle for k in fc.keyframe_points])
         
+        # Set keyframe values
         for chainindex,chain in enumerate(chains):
             bonelink = [pbones[b.name] for b in chain]
             print([b.name for b in bonelink])
             
             for chainpos,b in enumerate(bonelink):
-                fcurves = fcurvemap[b.name]
-                
-                for fc in fcurves:
-                    if not fc.hide and not fc.lock:
-                        for k in fc.keyframe_points:
-                            if k.select_control_point:
-                                k.co_ui[0] += channel_shift*chainindex + chainpos*position_shift
+                for fc in fcurvebundles[b.name]:
+                    kpoints = tuple([k for k in fc.keyframe_points if k.select_control_point])
+                    k0 = kpoints[0]
+                    
+                    if self.overwrite:
+                        for k in kpoints[::-1]:
+                            k.co_ui[0] -= k0.co_ui[0]
+                    
+                    for k in kpoints:
+                        k.co_ui[0] += foffset + channel_shift*chainindex + chainpos*position_shift
         
         return {'FINISHED'}
 classlist.append(DMR_OP_KeyframeManip_Wave)
@@ -660,7 +665,9 @@ class DMR_OP_BoneChainAddBone(bpy.types.Operator):
         return {'FINISHED'}
 bpy.utils.register_class(DMR_OP_BoneChainAddBone)
 
-# =============================================================================
+'# =========================================================================================================================='
+'# PANELS'
+'# =========================================================================================================================='
 
 class DMR_PT_BoneChains(bpy.types.Panel):
     bl_label = "Bone Chains"
@@ -708,8 +715,6 @@ class DMR_PT_BoneChains(bpy.types.Panel):
             c.operator('dmr.bone_chain_add_bone', text='', icon='ADD')
         
 classlist.append(DMR_PT_BoneChains)
-
-# =============================================================================
 
 # ---------------------------------------------------------------------------
 class BoneChainBone(bpy.types.PropertyGroup):
