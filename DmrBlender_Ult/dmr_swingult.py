@@ -453,7 +453,7 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
     
     def AddParams(self, copy_active=False):
         p = self.params.add()
-        if copy_active:
+        if copy_active and len(self.params) > 0:
             p.CopyFromOther(self.params[self.index_param])
         self.index_param = len(self.params)-1
         return p
@@ -492,7 +492,7 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
         return self.params[self.index_param]
     
     def CopyFromOther(self, other):
-        if self == other:
+        if self == other or not other:
             return self
         
         self.name = other.name
@@ -843,7 +843,7 @@ class SwingData(bpy.types.PropertyGroup):
         active = self.GetStructActive(type)
         entry = self.GetStructList(type).add()
         
-        if copy_active and (type in ['BONE', 'SPHERE', 'OVAL', 'ELLIPSOID', 'CAPSULE', 'PLANE', 'CONNECTION']):
+        if copy_active and active and (type in ['BONE', 'SPHERE', 'OVAL', 'ELLIPSOID', 'CAPSULE', 'PLANE', 'CONNECTION']):
             entry.CopyFromOther( active )
             entry.name = active.name
             self.GetStructList(type).move(len(self.GetStructList(type))-1, self.GetStructActiveIndex(type)+1)
@@ -2047,21 +2047,21 @@ class SWINGULT_PT_SwingData_3DView_SwingBone_Params(bpy.types.Panel):
         swingbone = prc.GetStructActive('BONE')
         
         if swingbone:
+            self.bl_label = SUBPANELLABELSPACE + "Params (%d)" % len(swingbone.params)
+            
+            r = col.row(align=1)
+            r.template_list(
+                "SWINGULT_UL_SwingData_SwingBone_Params", "", swingbone, "params", swingbone, "index_param", rows=3)
+            
+            c = r.column(align=1)
+            c.operator('swingult.swing_bone_params_add', text="", icon='ADD')
+            c.operator('swingult.swing_bone_params_remove', text="", icon='REMOVE')
+            c.separator()
+            c.operator('swingult.swing_bone_params_move', text="", icon='TRIA_UP').direction = 'UP'
+            c.operator('swingult.swing_bone_params_move', text="", icon='TRIA_DOWN').direction = 'DOWN'
+            
             if swingbone.params:
-                self.bl_label = SUBPANELLABELSPACE + "Params (%d)" % len(swingbone.params)
-                
                 entry = swingbone.params[swingbone.index_param]
-                
-                r = col.row(align=1)
-                r.template_list(
-                    "SWINGULT_UL_SwingData_SwingBone_Params", "", swingbone, "params", swingbone, "index_param", rows=3)
-                
-                c = r.column(align=1)
-                c.operator('swingult.swing_bone_params_add', text="", icon='ADD')
-                c.operator('swingult.swing_bone_params_remove', text="", icon='REMOVE')
-                c.separator()
-                c.operator('swingult.swing_bone_params_move', text="", icon='TRIA_UP').direction = 'UP'
-                c.operator('swingult.swing_bone_params_move', text="", icon='TRIA_DOWN').direction = 'DOWN'
                 
                 b = col.column(align=1)
                 
