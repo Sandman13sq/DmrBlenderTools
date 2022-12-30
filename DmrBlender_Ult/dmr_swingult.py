@@ -152,6 +152,14 @@ def XMLValue(element, typename, hashname):
         if el.get("hash") == hashname:
             return el.text
 
+def XMLValueAny(element, hashname):
+    for typename in ['int', 'sbyte', 'byte', 'float', 'hash40']:
+        for el in element.findall(typename):
+            if el.get("hash") == hashname:
+                return el.text
+    print("WARNING: No value found for \"%s\"" % hashname)
+    return 0
+
 def XMLValueByHash(element, hashname):
     for el in element.findall('hash40')+element.findall('float'):
         if el.attrib["hash"] == hashname:
@@ -180,10 +188,10 @@ def XMLToSwingEdit(self, context, path):
                 entry.name = XMLValue(struct_def, 'hash40', "name")
                 entry.start_bonename = XMLValue(struct_def, 'hash40', "start_bonename")
                 entry.end_bonename = XMLValue(struct_def, 'hash40', "end_bonename")
-                entry.isskirt = int(XMLValue(struct_def, 'sbyte', "isskirt"))
-                entry.rotateorder = int(XMLValue(struct_def, 'int', "rotateorder"))
-                entry.curverotatex = int(XMLValue(struct_def, 'sbyte', "curverotatex"))
-                unknown_0x0f7316a113 = XMLValue(struct_def, 'sbyte', "0x0f7316a113")
+                entry.isskirt = int(XMLValueAny(struct_def, "isskirt"))
+                entry.rotateorder = int(XMLValueAny(struct_def, "rotateorder"))
+                entry.curverotatex = int(XMLValueAny(struct_def, "curverotatex"))
+                unknown_0x0f7316a113 = XMLValueAny(struct_def, "0x0f7316a113")
                 
                 if unknown_0x0f7316a113:
                     entry.unknown_0x0f7316a113 = int(unknown_0x0f7316a113)
