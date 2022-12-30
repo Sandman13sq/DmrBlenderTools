@@ -1283,6 +1283,18 @@ class SwingData(bpy.types.PropertyGroup):
                     if c.hash40:
                         group.Add(c.hash40)
                 # 33
+    
+    # Returns label lose enough to given string
+    def FindClosestGroupLabel(self, label, print_count=8):
+        usedlabels = [g.name for g in self.groups]
+        targetlabels = [x for x in bpy.context.scene.swing_ultimate.prc_labels_string.split() if x not in usedlabels]
+        
+        Sqr = lambda x: x*x
+        Abs = lambda x: x if x >= 0 else -x
+        labeln = len(label)
+        
+        targetlabels.sort(key=lambda x: sum([ Abs(ord(c1)-ord(c2)) for c1,c2 in zip(label, x)] ) + Sqr(len(x)-labeln) )
+        return targetlabels[:print_count]
 classlist.append(SwingData)
 
 class SwingSceneData(bpy.types.PropertyGroup):
@@ -1389,6 +1401,18 @@ class SwingSceneData(bpy.types.PropertyGroup):
                 for r in labels if sum([1 for x in r[1] if x.upper() in "QWERTYUIOPASDFGHJKLZXCVBNM"])
             )
         print("> Labels updated")
+    
+    # Returns label matching or close enough to given string
+    def FindClosestLabel(self, label, print_count=8):
+        targetlabels = self.prc_labels_string.split()
+        
+        Sqr = lambda x: x*x
+        Abs = lambda x: x if x >= 0 else -x
+        labeln = len(label)
+        
+        targetlabels.sort(key=lambda x: sum([ Abs(ord(c1)-ord(c2)) for c1,c2 in zip(label, x)] ) + Sqr(len(x)-labeln) )
+        return targetlabels[:print_count]
+        
 classlist.append(SwingSceneData)
 
 "================================================================================================"
@@ -1521,13 +1545,15 @@ class SWINGULT_OP_SwingData_Validate(bpy.types.Operator):
     bl_label = "Validate Hashes"
     
     def execute(self, context):
-        conflicts = context.scene.swing_ultimate.GetActiveData().Validate()
+        swing_ultimate = context.scene.swing_ultimate
+        active = swing_ultimate.GetActiveData()
+        conflicts = active.Validate()
         
         if conflicts == None:
             self.report({'INFO'}, "No labels loaded to reference. Use \"Update Labels\" to load from ParamLabels.csv on disk")
         
         elif len(conflicts) > 0:
-            self.report({'INFO'}, "%d Conflicts. First is %s" % (len(conflicts), conflicts[0]))
+            self.report({'INFO'}, "%d Conflicts. First is %s. Suggestions: %s" % (len(conflicts), conflicts[0], " ".join(active.FindClosestGroupLabel(conflicts[0][2], 4))) )
         else:
             self.report({'INFO'}, "No conflicts found")
         return {'FINISHED'}
