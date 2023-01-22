@@ -89,7 +89,7 @@ class DMR_OT_SetActiveMaterialOutput(bpy.types.Operator):
             objects = [x for x in bpy.data.objects]
         
         objects = [x for x in objects if x.active_material]
-        materials = list(set([obj.active_material for obj in objects]))
+        materials = list(set([slot.material for obj in objects for m in obj.materials_slots]))
         
         nodename = self.node_name
         
@@ -209,20 +209,25 @@ class DMR_OP_SyncMeshDataLayers(bpy.types.Operator):
         # Active
         active = context.active_object
         
-        vcname = (
-            active.data.color_attributes.active_color.name,
-            active.data.color_attributes.active.name
-        ) if bpy.app.version >= (3, 2, 2) else (
-            active.data.vertex_colors.active.name,
-            [x for x in active.data.vertex_colors if x.active_render][0].name
-        )
+        if not active:
+            active = context.object
         
-        uvname = (
-            active.data.uv_layers.active.name,
-            [x for x in active.data.uv_layers if x.active_render][0].name
-        )
+        if self.colors:
+            vcname = (
+                active.data.color_attributes.active_color.name,
+                active.data.color_attributes.active.name
+            ) if bpy.app.version >= (3, 2, 2) else (
+                active.data.vertex_colors.active.name,
+                [x for x in active.data.vertex_colors if x.active_render][0].name
+            )
         
-        groupname = active.vertex_groups.active.name
+        if self.uvs:
+            uvname = (
+                active.data.uv_layers.active.name,
+                [x for x in active.data.uv_layers if x.active_render][0].name
+            )
+        
+        groupname = active.vertex_groups.active.name if active.vertex_groups else ""
         
         # Selcted
         for obj in context.selected_objects:
