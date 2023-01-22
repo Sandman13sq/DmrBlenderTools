@@ -13,7 +13,9 @@ import bpy
 
 classlist = []
 
-# =============================================================================
+'# ====================================================================================='
+'# OPERATORS'
+'# ====================================================================================='
 
 class DMR_OP_ActionAddMarker(bpy.types.Operator):
     bl_label = "Add Action Marker"
@@ -233,44 +235,91 @@ classlist.append(DMR_OP_SyncRangeToMarkers)
 
 # --------------------------------------------------------------------------
 
-class DMR_OP_ActionMarkers_SelectAction(bpy.types.Operator):
-    bl_label = "Select Action and Sync Markers"
-    bl_idname = 'dmr.markers_select_action'
-    bl_description = 'Sets action of all objects to match active';
+class DMR_OP_SortMarkers(bpy.types.Operator):
+    bl_label = "Sort Markers"
+    bl_idname = 'dmr.sort_markers'
+    bl_description = "Sorts markers"
     bl_options = {'REGISTER', 'UNDO'}
     
-    actionname: bpy.props.StringProperty(name="Action Name",)
+    type : bpy.props.EnumProperty(
+        name="Type",
+        description="Method to sort items",
+        items=(
+            ('NAME', "Name", "Sort by name"),
+            ('FRAME', "Frame", "Sort by frame"),
+            ('FLIP', "Flips", "Flips list"),
+        ),
+        default="FRAME"
+        )
+    
+    reverse : bpy.props.BoolProperty(
+        name="Reverse",
+        description="Reverse sort",
+        default=False
+    )
     
     @classmethod
     def poll(self, context):
-        return context.object
+        return (
+            context.object and 
+            context.object.animation_data and 
+            context.object.animation_data.action and
+            context.object.animation_data.action.pose_markers
+            )
     
     def execute(self, context):
-        action = bpy.data.actions[self.actionname]
+        action = context.object.animation_data.action
+        markers = action.pose_markers
+        markerdata = [(m.name, m.frame, m.camera) for m in markers]
         
-        if action:
-            context.object.animation_data.action = action;
-            bpy.ops.dmr.sync_frame_range_to_markers()
+        # Sort
+        if self.type == 'NAME':
+            markerdata.sort(key=lambda m: m[0])
+        elif self.type == 'FRAME':
+            markerdata.sort(key=lambda m: m[1])
+        elif self.type == 'FLIP':
+            markerdata = markerdata[::-1]
+        
+        if self.reverse:
+            markerdata = markerdata[::-1]
+        
+        # Apply
+        [markers.remove(m) for m in list(markers)[::-1]]
+        for mdata in markerdata:
+            m = markers.new(mdata[0])
+            m.name, m.frame, m.camera = mdata
+        
         return {'FINISHED'}
-classlist.append(DMR_OP_ActionMarkers_SelectAction);
+classlist.append(DMR_OP_SortMarkers)
 
-# =====================================================================================
+'# ====================================================================================='
+'# UI LIST'
+'# ====================================================================================='
 
 class DMR_UL_ActionMarkers(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         r = layout.row(align=1)
-        r = [r.row(align=1) for x in (0, 1, 2, 3)]
-        r[0].scale_x = 0.3
-        r[1].scale_x = 1
-        r[2].scale_x = 0.77
         
-        r[0].label(text=' '+str(index))
-        r[1].operator('dmr.set_scene_frame', text='', icon='PLAY', emboss=context.scene.frame_current!=item.frame).frame=item.frame
-        r[2].prop(item, 'frame', text='')
-        r[3].prop(item, 'name', text='', event=0)
+        r.prop(item, 'name', text='', event=0, emboss=False)
+        r.prop(item, 'frame', text='')
+        r.operator('dmr.set_scene_frame', text='', icon='PLAY', emboss=context.scene.frame_current!=item.frame).frame=item.frame
 classlist.append(DMR_UL_ActionMarkers)
 
-# =============================================================================
+# --------------------------------------------------------------------------
+
+class DMR_UL_ActionMarkers_SelectAction(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        r = layout.row(align=1)
+        r = [r.row(align=1) for x in (0, 1)]
+        r[0].scale_x = 0.3
+        r[1].scale_x = 1
+        r[0].label(text=' '+str(index))
+        r[1].operator('dmr.set_scene_frame', text='', icon='PLAY', emboss=context.scene.frame_current!=item.frame).frame=item.frame
+classlist.append(DMR_UL_ActionMarkers_SelectAction)
+
+'# ====================================================================================='
+'# PANELS'
+'# ====================================================================================='
 
 def DrawMarkerUIList(self, context):
     if context.object.animation_data:
@@ -287,13 +336,18 @@ def DrawMarkerUIList(self, context):
                 markers, "active_index", 
                 rows=5)
             
-            col = row.column(align=1)
-            col.operator('dmr.action_add_marker', icon='ADD', text='').frame = sc.frame_current
-            op = col.operator('dmr.action_remove_marker', icon='REMOVE', text='')
+            c = row.column(align=1)
+            c.operator('dmr.action_add_marker', icon='ADD', text='').frame = sc.frame_current
+            op = c.operator('dmr.action_remove_marker', icon='REMOVE', text='')
             op.mode = 'INDEX'
             op.index = markers.active_index
-            col.operator('dmr.action_move_marker', icon='TRIA_UP', text='').direction='UP'
-            col.operator('dmr.action_move_marker', icon='TRIA_DOWN', text='').direction='DOWN'
+            c.separator()
+            
+            c.operator('dmr.action_move_marker', icon='TRIA_UP', text='').direction='UP'
+            c.operator('dmr.action_move_marker', icon='TRIA_DOWN', text='').direction='DOWN'
+            c.separator()
+            
+            c.operator('dmr.sort_markers', icon='FILE_REFRESH', text='')
         else:
             layout.operator('dmr.action_add_marker', icon='ADD').frame = sc.frame_current
 
@@ -302,7 +356,7 @@ class DMR_PT_ActionMarkers(bpy.types.Panel):
     bl_label = "Markers"
     bl_space_type = 'DOPESHEET_EDITOR'
     bl_region_type = 'UI'
-    bl_category = "Markers" # Name of sidebar
+    bl_category = "Action" # Name of sidebar
     
     @classmethod 
     def poll(self, context):
@@ -314,7 +368,8 @@ class DMR_PT_ActionMarkers(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
-        layout.prop(context.space_data, 'show_pose_markers')
+        if context.space_data == 'GRAPH_EDITOR':
+            layout.prop(context.space_data, 'show_pose_markers')
         layout.operator('dmr.sync_frame_range_to_markers')
         DrawMarkerUIList(self, context)
 classlist.append(DMR_PT_ActionMarkers)
@@ -324,55 +379,11 @@ class DMR_PT_ActionMarkers_Graph(bpy.types.Panel):
     bl_label = "Markers"
     bl_space_type = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
-    bl_category = "Markers" # Name of sidebar
+    bl_category = "View" # Name of sidebar
     
-    @classmethod 
-    def poll(self, context):
-        return (
-            context.object and 
-            context.object.animation_data and
-            context.object.animation_data.action
-            )
-    
-    def draw(self, context):
-        layout = self.layout
-        layout.operator('dmr.sync_frame_range_to_markers')
-        DrawMarkerUIList(self, context)
+    poll = DMR_PT_ActionMarkers.poll
+    draw = DMR_PT_ActionMarkers.draw
 classlist.append(DMR_PT_ActionMarkers_Graph)
-
-# =============================================================================
-
-class DMR_UL_ActionMarkers_SelectAction(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
-        r = [r.row(align=1) for x in (0, 1)]
-        r[0].scale_x = 0.3
-        r[1].scale_x = 1
-        r[0].label(text=' '+str(index))
-        r[1].operator('dmr.set_scene_frame', text='', icon='PLAY', emboss=context.scene.frame_current!=item.frame).frame=item.frame
-classlist.append(DMR_UL_ActionMarkers_SelectAction)
-
-# --------------------------------------------------------------------------
-class DMR_PT_ActionMarkers_ActionSelect(bpy.types.Panel):
-    bl_label = "Action Select"
-    bl_space_type = 'GRAPH_EDITOR'
-    bl_region_type = 'UI'
-    bl_category = "Markers" # Name of sidebar
-    
-    @classmethod 
-    def poll(self, context):
-        return (
-            context.object and 
-            context.object.animation_data and
-            context.object.animation_data.action
-            )
-    
-    def draw(self, context):
-        layout = self.layout
-        c = layout.column(align=1)
-        for a in bpy.data.actions:
-            c.operator('dmr.markers_select_action', text = a.name).actionname = a.name
-classlist.append(DMR_PT_ActionMarkers_ActionSelect)
 
 # =============================================================================
 
