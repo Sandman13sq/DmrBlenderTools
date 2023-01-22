@@ -59,6 +59,7 @@ def ImageFrom4(
     image_node_label="",
     color_space='Linear',
     save_image=True
+    values=[0,0,0,0],
     ):
     
     # Setup
@@ -119,8 +120,15 @@ def ImageFrom4(
         keyedimage = {}
         
         for channelindex, name in enumerate([output1, output2, output3, output4]):
+            # Use Default Value
             if name == "":
-                bakeimages.append(None)
+                print('> "%s", value = %.2f' % (name, values[channelindex]))
+                bakeimage = bpy.data.images.new("__temp_bake%d_%s" % (channelindex, name), 
+                    targetimage.size[0], targetimage.size[1], alpha=True, is_data=True)
+                bakeimages.append(bakeimage)
+                bakeimage.colorspace_settings.name = color_space
+                
+                bakeimage.pixels = tuple([values[channelindex]] * len(bakeimage.pixels))
                 continue
             
             bakekey = str((name, types[channelindex]))
@@ -221,9 +229,9 @@ def ImageFrom4(
         
     return {'FINISHED'}
 
-# ================================================================================
-# PROPERTY GROUPS
-# ================================================================================
+'# ================================================================================'
+'# PROPERTY GROUPS'
+'# ================================================================================'
 
 class PRM_BakeTricks_MaterialOutputDef(bpy.types.PropertyGroup):
     output : bpy.props.StringProperty(
@@ -246,12 +254,20 @@ class PRM_BakeTricks_MaterialOutputDef(bpy.types.PropertyGroup):
         default=1,
         description="Number of samples to use when baking"
         )
+    value : bpy.props.FloatProperty(
+        name="Value",
+        description="Value For Channel",
+        min=0.0,
+        max=1.0,
+        default=1.0
+    )
     
     def CopyFromOther(self, other):
         self.output = other.output
         self.type = other.type
         self.channel = other.channel
         self.samples = other.samples
+        self.value = other.value
         
         return self
 classlist.append(PRM_BakeTricks_MaterialOutputDef)
@@ -283,7 +299,7 @@ class PRM_BakeTricks_BakeDef(bpy.types.PropertyGroup):
     
     def Serialize(self):
         return tuple(
-            (x.output, x.type, x.channel, x.samples) for x in self.items
+            (x.output, x.type, x.channel, x.samples, x.value) for x in self.items
         )
     
     def Unserialize(self, data):
@@ -394,7 +410,9 @@ class PRM_BakeTricks_Master(bpy.types.PropertyGroup):
             context.scene.render.engine = 'CYCLES'
 classlist.append(PRM_BakeTricks_Master)
 
-# ----------------------------------------------------------------------------
+'# ================================================================================'
+'# UI LIST'
+'# ================================================================================'
 
 class PRM_UL_BakeDefList(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
@@ -404,10 +422,10 @@ class PRM_UL_BakeDefList(bpy.types.UIList):
         
         itemdata = item.Serialize()
         op = r.operator("dmr.bake_from_4", text="", icon='RENDER_STILL')
-        op.output1, op.type1, op.channel1, op.samples[0] = itemdata[0]
-        op.output2, op.type2, op.channel2, op.samples[1] = itemdata[1]
-        op.output3, op.type3, op.channel3, op.samples[2] = itemdata[2]
-        op.output4, op.type4, op.channel4, op.samples[3] = itemdata[3]
+        op.output1, op.type1, op.channel1, op.samples[0], op.values[0] = itemdata[0]
+        op.output2, op.type2, op.channel2, op.samples[1], op.values[1] = itemdata[1]
+        op.output3, op.type3, op.channel3, op.samples[2], op.values[2] = itemdata[2]
+        op.output4, op.type4, op.channel4, op.samples[3], op.values[3] = itemdata[3]
         op.color_space = item.color_space
         
         r.prop(item, 'name', text="", emboss=False)
@@ -419,9 +437,9 @@ class PRM_UL_BakeDefList(bpy.types.UIList):
         r.row().prop(active_data, 'op_remove_item', text="", index=index, icon_only=True, icon='REMOVE')
 classlist.append(PRM_UL_BakeDefList)
 
-# ================================================================================
-# OPERTATORS
-# ================================================================================
+'# ================================================================================'
+'# OPERTATORS'
+'# ================================================================================'
 
 class PRM_OT_BakeFrom4(bpy.types.Operator):
     """Composite an image using 4 material outputs"""
@@ -455,6 +473,7 @@ class PRM_OT_BakeFrom4(bpy.types.Operator):
     channel4: bpy.props.EnumProperty(default='R', items=Items_ColorChannels)
     
     samples : bpy.props.IntVectorProperty(name="Samples", size=4, default=(1,1,1,1))
+    values : bpy.props.FloatVectorProperty(name="Value", size=4, default=(1,1,1,1))
     color_space : bpy.props.EnumProperty(
         name="Color Space",
         default='Linear', 
@@ -483,9 +502,13 @@ class PRM_OT_BakeFrom4(bpy.types.Operator):
         for i, ci in enumerate('1234'):
             r = c.row(align=1)
             cc[0].prop(self, 'output'+ci, text="")
-            cc[1].prop(self, 'type'+ci, text="")
-            cc[2].prop(self, 'channel'+ci, text="")
-            cc[3].prop(self, 'samples', index=i, text="")
+            
+            if getattr(self, 'output'+ci):
+                cc[1].prop(self, 'type'+ci, text="")
+                cc[2].prop(self, 'channel'+ci, text="")
+                cc[3].prop(self, 'samples', index=i, text="")
+            else:
+                cc[2].prop(self, 'values', index=i, text="")
         
         layout.prop(self, 'color_space')
         layout.prop(self, 'save_image')
@@ -553,24 +576,25 @@ class PRM_PT_BakeTricksPanel(bpy.types.Panel):
                 r = c.row(align=1)
                 rr = r.split(factor=0.35, align=1)
                 rr.prop(item, 'output', text="")
-                rr = rr.split(factor=0.4, align=1)
-                rr.prop(item, 'type', text="")
-                rr = rr.split(factor=0.5, align=1)
                 
-                rr.prop(item, 'channel', text="")
-                rr.prop(item, 'samples', text="")
+                if item.output:
+                    rr = rr.split(factor=0.4, align=1)
+                    rr.prop(item, 'type', text="")
+                    rr = rr.split(factor=0.5, align=1)
+                    rr.prop(item, 'channel', text="")
+                    rr.prop(item, 'samples', text="")
+                else:
+                    rr.prop(item, 'value')
             
             # Bake Operator
             itemdata = activedef.Serialize()
             
-            if context.scene.render.engine != 'CYCLES':
-                c.prop(master, 'op_cycles', text="Switch To Cycles Rendering", toggle=True)
-            else:
+            if context.scene.render.engine == 'CYCLES':
                 op = c.operator("dmr.bake_from_4", text="Bake Using Defined Settings")
-                op.output1, op.type1, op.channel1, op.samples[0] = itemdata[0]
-                op.output2, op.type2, op.channel2, op.samples[1] = itemdata[1]
-                op.output3, op.type3, op.channel3, op.samples[2] = itemdata[2]
-                op.output4, op.type4, op.channel4, op.samples[3] = itemdata[3]
+                op.output1, op.type1, op.channel1, op.samples[0], op.values[0] = itemdata[0]
+                op.output2, op.type2, op.channel2, op.samples[1], op.values[1] = itemdata[1]
+                op.output3, op.type3, op.channel3, op.samples[2], op.values[2] = itemdata[2]
+                op.output4, op.type4, op.channel4, op.samples[3], op.values[3] = itemdata[3]
                 op.color_space = activedef.color_space
         
         # Cycles Bake Settings
@@ -598,7 +622,9 @@ class PRM_PT_BakeTricksPanel_Properties(bpy.types.Panel):
     draw = PRM_PT_BakeTricksPanel.draw
 classlist.append(PRM_PT_BakeTricksPanel_Properties)
 
-# ================================================================================
+'# ================================================================================'
+'# REGISTER'
+'# ================================================================================'
 
 def register():
     for c in classlist:
