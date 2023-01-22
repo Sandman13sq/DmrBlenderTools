@@ -2,16 +2,19 @@ bl_info = {
     'name': 'Smush Swing Editor',
     'description': 'An interface to open and edit swing xml files for Smush modding.\nPRC to XML converter by BenHall-7 can be found here: https://github.com/BenHall-7/paracobNET/releases',
     'author': 'Dreamer13sq',
-    'version': (0, 1),
+    'version': (0, 2),
     'blender': (3, 0, 0),
     'category': 'User Interface',
     'support': 'COMMUNITY',
-    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Keyframe-Manip'
+    'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki/Swing-Params-Editor'
 }
 
 import bpy
 import xml.etree.ElementTree as ET
 import csv
+import math
+import mathutils
+import bmesh
 
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty
@@ -40,11 +43,26 @@ classlist = []
 
 SUBPANELLABELSPACE = "    ^ "
 TABSTRING = "  "
-SMASHUNIT = 0.25
+VISUALSHAPESCALE = 10
 
 STRUCTTYPENAMES = (
     'BONE', 'SPHERE', 'OVAL', 'ELLIPSOID', 'CAPSULE', 'PLANE', 'CONNECTION', 'GROUP'
 )
+
+SHAPENAMES = (
+    'SPHERE', 'OVAL', 'ELLIPSOID', 'CAPSULE', 'PLANE'
+)
+
+STRUCTICONS = {
+    'BONE': 'BONE_DATA',
+    'SPHERE': 'MESH_UVSPHERE',
+    'OVAL': 'META_BALL',
+    'ELLIPSOID': 'META_ELLIPSOID',
+    'CAPSULE': 'MESH_CAPSULE',
+    'PLANE': 'MESH_PLANE',
+    'CONNECTION': 'OUTLINER_DATA_CURVE',
+    'GROUP': 'GROUP',
+}
 
 Items_MoveDirection = tuple([
     ('DOWN', "Down", "Move Down"),
@@ -113,39 +131,31 @@ def SerializeStruct(structentry, tabs=0, index=-1):
         TABSTRING*tabs + "</struct>\n"
     )
 
-# =============================================================================
+"========================================================================================================="
 
-def NewVisualObject(sourceobject, sourcearmature, bonename, end_bonename=""):
-    bonelower = {b.name.lower(): b.name for b in sourcearmature.data.bones}
+def DrawStructUIList(layout, active_prc, type, list_pt, collectionprop_name, index_name):
+    r = layout.row(align=True)
+    swing_ultimate = bpy.context.scene.swing_ultimate
     
-    obj = sourceobject.copy()
-    obj.data = sourceobject.data.copy()
-    bpy.context.scene.collection.objects.link(obj)
+    r.template_list(list_pt, "", active_prc, collectionprop_name, active_prc, index_name, rows=5)
     
-    obj.show_name = True
-    obj.show_in_front = True
-    obj.display_type = 'WIRE'
+    c = r.column(align=True)
+    c.operator('swingult.struct_add', text="", icon='ADD').type = type
+    c.operator('swingult.struct_remove', text="", icon='REMOVE').type = type
     
-    for sk in obj.data.shape_keys.key_blocks:
-        sk.value = 0.0
-        sk.slider_min = -100
-        sk.slider_max = 100
+    c.separator()
+    op = c.operator('swingult.struct_move', text="", icon='TRIA_UP')
+    op.type = type
+    op.direction = 'UP'
+    op = c.operator('swingult.struct_move', text="", icon='TRIA_DOWN')
+    op.type = type
+    op.direction = 'DOWN'
     
-    obj.constraints["bone"].target = sourcearmature
-    
-    if bonename in bonelower.keys():
-        obj.constraints["bone"].subtarget = bonelower[bonename.lower()]
-    else:
-        obj.constraints["bone"].subtarget = ""
-    
-    if "track" in obj.constraints.keys():
-        obj.constraints["track"].target = sourcearmature
-        if bonename in bonelower.keys():
-            obj.constraints["track"].subtarget = bonelower[end_bonename.lower()]
-        obj.constraints["track"].enabled = bonename != end_bonename and end_bonename != ""
-    return obj
+    c.separator()
+    op = c.operator('swingult.struct_transfer', text="", icon='PASTEDOWN')
+    op.type = type
 
-# =============================================================================
+"========================================================================================================="
 
 def XMLValue(element, typename, hashname):
     for el in element.findall(typename):
@@ -304,6 +314,192 @@ def XMLToSwingEdit(self, context, path):
             for group_def in el:
                 entry.Add( group_def.text )
 
+"========================================================================================================="
+
+def DriverPropertyVariable(id, data_path, var_name, target_type, target, prop_path, expression):
+    if not id.animation_data:
+        id.animation_data_create()
+    
+    d = id.animation_data.drivers.new(data_path).driver
+    v = d.variables.new()
+    v.name = var_name
+    v.type = 'SINGLE_PROP'
+    v.targets[0].id_type = target_type
+    v.targets[0].id = target
+    v.targets[0].data_path = prop_path
+    
+    d.type = 'SCRIPTED'
+    d.expression = expression
+    return d
+    
+def CreateVisualArc(name):
+    # Collection
+    dataname = "SWINGULT Visuals"
+    if dataname not in bpy.data.collections.keys():
+        bpy.data.collections.new(name=dataname)
+    collection = bpy.data.collections[dataname]
+    
+    if dataname not in bpy.context.scene.collection.children.keys():
+        bpy.context.scene.collection.children.link(collection)
+    
+    # Curve
+    dataname = "SWINGULT_arc"
+    
+    if name not in bpy.data.curves.keys():
+        data = bpy.data.curves.new(type='CURVE', name=dataname)
+        data.splines.clear()
+        data.resolution_u = 1
+        data.bevel_resolution = 0
+        spline = data.splines.new('POLY')
+        
+        n = 16
+        spline.use_cyclic_u = False
+        spline.points.add(n-len(spline.points)+1)
+        
+        anglestart = -math.pi/2
+        angle = anglestart
+        
+        for i,p in enumerate(spline.points):
+            p.co = (math.cos(angle), math.sin(angle), 0, 1)
+            angle += (2*math.pi) / n
+        
+        spline.points[0].co = (math.cos(anglestart-0.1), math.sin(anglestart-0.1), 0, 1)
+        spline.points[-1].co = (math.cos(anglestart+0.1), math.sin(anglestart+0.1), 0, 1)
+        
+        data.bevel_depth = 1
+    
+    data = bpy.data.curves[dataname]
+    
+    # Create Object
+    data = bpy.data.curves["SWINGULT_arc"]
+    obj = bpy.data.objects.new(name="SWINGULT_arc"+'-'+name, object_data=data.copy())
+    collection.objects.link(obj)
+    
+    obj.show_in_front = True
+    obj.display_type = 'WIRE'
+    obj.scale[2] = 0
+    
+    return obj
+
+def CreateVisualShape(name, type):
+    # Collection
+    dataname = "SWINGULT Visuals"
+    if dataname not in bpy.data.collections.keys():
+        bpy.data.collections.new(name=dataname)
+    collection = bpy.data.collections[dataname]
+    
+    if dataname not in bpy.context.scene.collection.children.keys():
+        bpy.context.scene.collection.children.link(collection)
+    
+    # Mesh
+    dataname = "SWINGULT_" + type
+    
+    if type in {'SPHERE', 'ELLIPSOID', 'CAPSULE'}:
+        bm = bmesh.new()
+        bmesh.ops.create_uvsphere(
+            bm, 
+            u_segments=8, 
+            v_segments=8, 
+            radius=0.01,
+            matrix=mathutils.Matrix.Rotation(math.radians(90.0), 4, 'X'), 
+            calc_uvs=False
+            )
+        mesh = bpy.data.meshes.new(name=dataname)
+        bm.to_mesh(mesh)
+        bm.free()
+    elif type == 'PLANE':
+        bm = bmesh.new()
+        bmesh.ops.create_grid(
+            bm,
+            x_segments=1, 
+            y_segments=1, 
+            size=1,
+            calc_uvs=False
+            )
+        mesh = bpy.data.meshes.new(name=dataname)
+        bm.to_mesh(mesh)
+        bm.free()
+    
+    # Create Object
+    obj = bpy.data.objects.new(name=dataname+'-'+name, object_data=mesh.copy())
+    collection.objects.link(obj)
+    
+    obj.show_in_front = True
+    obj.display_type = 'WIRE'
+    
+    coindex = [1,0,2]
+    cosign = [1,1,1]
+    
+    # Keys
+    if type == 'SPHERE':
+        obj.shape_key_add(name='Basis', from_mix=False)
+        for v in obj.shape_key_add(name='radius', from_mix=False).data:
+            v.co *= 100 * VISUALSHAPESCALE
+        for i,c in enumerate('xyz'): # Position
+            for v in obj.shape_key_add(name="c"+c, from_mix=False).data:
+                v.co[coindex[i]] += 1 * cosign[i] * VISUALSHAPESCALE
+    
+    elif type == 'ELLIPSOID':
+        obj.shape_key_add(name='Basis', from_mix=False)
+        for i,c in enumerate('xyz'): # Position
+            for v in obj.shape_key_add(name="c"+c, from_mix=False).data:
+                v.co[coindex[i]] += 1 * cosign[i] * VISUALSHAPESCALE
+        for i,c in enumerate('xyz'): # Rotation (TODO)
+            for v in obj.shape_key_add(name="r"+c, from_mix=False).data:
+                v.co[coindex[i]] *= 1 * cosign[i] * VISUALSHAPESCALE
+        for i,c in enumerate('xyz'): # Scale
+            for v in obj.shape_key_add(name="s"+c, from_mix=False).data:
+                v.co[coindex[i]] *= 100 * VISUALSHAPESCALE
+    
+    elif type == 'CAPSULE':
+        vertsides = (
+            [v.index for v in mesh.vertices if v.co[1] <= 0.001], 
+            [v.index for v in mesh.vertices if v.co[1] > 0.001]
+        )
+        obj.shape_key_add(name='Basis', from_mix=False)
+        
+        sk = obj.shape_key_add(name="length", from_mix=False).data
+        for vi in vertsides[1]:
+            sk[vi].co[1] += 1 * VISUALSHAPESCALE
+        
+        for i,c in enumerate('xyz'): # Start Offset
+            sk = obj.shape_key_add(name="start_offset_"+c, from_mix=False).data
+            for vi in vertsides[0]:
+                sk[vi].co[coindex[i]] += 1 * cosign[i] * VISUALSHAPESCALE
+        
+        for i,c in enumerate('xyz'): # End Offset
+            sk = obj.shape_key_add(name="end_offset_"+c, from_mix=False).data
+            for vi in vertsides[1]:
+                sk[vi].co[coindex[i]] += 1 * cosign[i] * VISUALSHAPESCALE
+        
+        sk = obj.shape_key_add(name="start_radius", from_mix=False).data
+        for vi in vertsides[0]:
+            sk[vi].co *= 100 * VISUALSHAPESCALE
+        
+        sk = obj.shape_key_add(name="end_radius", from_mix=False).data
+        for vi in vertsides[1]:
+            sk[vi].co *= 100 * VISUALSHAPESCALE
+    
+    elif type == 'PLANE':
+        obj.shape_key_add(name='Basis', from_mix=False)
+        for v in obj.shape_key_add(name='radius', from_mix=False).data:
+            v.co *= 100
+        for v in obj.shape_key_add(name="distance", from_mix=False).data:
+            v.co[coindex[2]] += 1 * cosign[2] * VISUALSHAPESCALE
+    
+    for key in obj.data.shape_keys.key_blocks:
+        key.slider_min = -10
+        key.slider_max = 10
+        
+    return obj
+
+def FlipSmashName(name):
+    sidepos = [i for i,c in enumerate(name) if c not in "0123456789_"][-1]
+    sidechar = name[sidepos]
+    if sidechar in "lrLR":
+        return name[:sidepos] + {k:v for k,v in zip("lrLR", "rlRL")}[sidechar] + name[sidepos+1:]
+    return name
+
 "================================================================================================"
 "SWING DATA CLASSES"
 "================================================================================================"
@@ -350,6 +546,8 @@ class SwingData_Hash40List(bpy.types.PropertyGroup): # -------------------------
         return SerializeList(self.name, self.data, tabs)
 classlist.append(SwingData_Hash40List)
 
+"------------------------------------------------------------------------------------------------"
+
 class SwingData_Swing_Bone_Params(bpy.types.PropertyGroup): # ---------------------------------
     airresistance : bpy.props.FloatProperty()
     waterresistance : bpy.props.FloatProperty()
@@ -369,6 +567,64 @@ class SwingData_Swing_Bone_Params(bpy.types.PropertyGroup): # ------------------
     collisions : bpy.props.CollectionProperty(type=SwingData_Hash40)
     
     index_collision : bpy.props.IntProperty()
+    
+    show_visuals : bpy.props.BoolProperty(name="Show Visuals", default=True)
+    object_minanglez : bpy.props.PointerProperty(type=bpy.types.Object)
+    object_minangley : bpy.props.PointerProperty(type=bpy.types.Object)
+    
+    def CreateVisualObjects(self, armature_object, bone_name, prc, swing_bone):
+        context = bpy.context
+        
+        prcindex = list(context.scene.swing_ultimate.data).index(prc)
+        sboneindex = list(prc.GetStructList('BONE')).index(swing_bone)
+        paramindex = list(swing_bone.params).index(self)
+        pose_bone = armature_object.pose.bones[bone_name]
+        
+        self.RemoveVisualObjects()
+        
+        for i in (0,1):
+            if [self.object_minanglez, self.object_minangley][i]:
+                bpy.data.objects.remove([self.object_minanglez, self.object_minangley][i], do_unlink=True)
+            
+            obj = CreateVisualArc(bone_name)
+            if i == 0:
+                self.object_minanglez = obj
+            else:
+                self.object_minangley = obj
+            
+            obj.name += "_"+"ZY"[i]
+            obj["swingname"] = swing_bone.name
+            obj["swingbone"] = pose_bone.name
+            obj["swingparam"] = paramindex
+            
+            curve = obj.data
+            if i == 1:
+                obj.rotation_euler[1] = math.pi / 2.0
+            obj.scale *= 1.1
+            obj.scale[2] = 0.01
+            
+            # Drivers
+            data_path_start = 'swing_ultimate.data[%d].swingbones[%d].params[%d]' % (prcindex, sboneindex, paramindex)
+            
+            DriverPropertyVariable(curve, 'bevel_factor_start', "x", "SCENE", context.scene, 
+                data_path_start+'.minangle'+'zy'[i],
+                '0.5 + x / 360.0'
+                )
+            DriverPropertyVariable(curve, 'bevel_factor_end', "x", "SCENE", context.scene, 
+                data_path_start+'.maxangle'+'zy'[i],
+                '0.5 + x / 360.0'
+                )
+            
+            c = obj.constraints.new(type='COPY_TRANSFORMS')
+            c.target = armature_object
+            c.subtarget = bone_name
+            c.mix_mode = 'BEFORE_FULL'
+        
+    def RemoveVisualObjects(self):
+        if self.object_minanglez:
+            bpy.data.objects.remove(self.object_minanglez, do_unlink=True)
+        if self.object_minangley:
+            bpy.data.objects.remove(self.object_minangley, do_unlink=True)
     
     def AddCollision(self, hash=""):
         entry = self.collisions.add()
@@ -405,26 +661,28 @@ class SwingData_Swing_Bone_Params(bpy.types.PropertyGroup): # ------------------
             structlist.move(structindex, newindex)
             self.index_collision = newindex
     
-    def CopyFromOther(self, other):
-        self.airresistance = other.airresistance
-        self.waterresistance = other.waterresistance
-        self.minanglez = other.minanglez
-        self.maxanglez = other.maxanglez
-        self.minangley = other.minangley
-        self.maxangley = other.maxangley
-        self.collisionsizetip = other.collisionsizetip
-        self.collisionsizeroot = other.collisionsizeroot
-        self.frictionrate = other.frictionrate
-        self.goalstrength = other.goalstrength
-        self.unknown_0x0cc10e5d3a = other.unknown_0x0cc10e5d3a
-        self.localgravity = other.localgravity
-        self.fallspeedscale = other.fallspeedscale
-        self.groundhit = other.groundhit
-        self.windaffect = other.windaffect
+    def CopyFromOther(self, other, values=True, collisions=True):
+        if values:
+            self.airresistance = other.airresistance
+            self.waterresistance = other.waterresistance
+            self.minanglez = other.minanglez
+            self.maxanglez = other.maxanglez
+            self.minangley = other.minangley
+            self.maxangley = other.maxangley
+            self.collisionsizetip = other.collisionsizetip
+            self.collisionsizeroot = other.collisionsizeroot
+            self.frictionrate = other.frictionrate
+            self.goalstrength = other.goalstrength
+            self.unknown_0x0cc10e5d3a = other.unknown_0x0cc10e5d3a
+            self.localgravity = other.localgravity
+            self.fallspeedscale = other.fallspeedscale
+            self.groundhit = other.groundhit
+            self.windaffect = other.windaffect
         
-        self.collisions.clear()
-        for c in other.collisions:
-            self.AddCollision(c.hash40)
+        if collisions:
+            self.collisions.clear()
+            for c in other.collisions:
+                self.AddCollision(c.hash40)
     
     def Serialize(self, tabs=0, index=0):
         out = ""
@@ -445,6 +703,45 @@ class SwingData_Swing_Bone_Params(bpy.types.PropertyGroup): # ------------------
         out += SerializeFloat("windaffect", self.windaffect, tabs)
         out += SerializeList("collisions", self.collisions, tabs)
         return out
+
+    def DrawPanel(self, layout, draw_collisions=True):
+        c = layout.column(align=True)
+        c.prop(self, 'airresistance')
+        c.prop(self, 'waterresistance')
+        r = c.row(align=True)
+        r.prop(self, 'minanglez')
+        r.prop(self, 'maxanglez')
+        r = c.row(align=True)
+        r.prop(self, 'minangley')
+        r.prop(self, 'maxangley')
+        c.prop(self, 'collisionsizetip')
+        c.prop(self, 'collisionsizeroot')
+        c.prop(self, 'frictionrate')
+        c.prop(self, 'goalstrength')
+        c.prop(self, 'unknown_0x0cc10e5d3a')
+        c.prop(self, 'localgravity', expand=True)
+        c.prop(self, 'fallspeedscale')
+        c.prop(self, 'groundhit')
+        c.prop(self, 'windaffect')
+        
+        if draw_collisions:
+            b = layout.box().column()
+            r = b.row()
+            r.alignment = 'CENTER'
+            r.label(text="== Collisions ==")
+            
+            r = b.row(align=True)
+            
+            r.template_list(
+                "SWINGULT_UL_SwingData_SwingBone_Params_Collisions", "", self, "collisions", self, "index_collision", rows=3)
+            
+            c = r.column(align=True)
+            c.scale_y = 0.95
+            c.operator('swingult.swing_bone_params_collision_add', text="", icon='ADD')
+            c.operator('swingult.swing_bone_params_collision_remove', text="", icon='REMOVE')
+            c.separator()
+            c.operator('swingult.swing_bone_params_collision_move', text="", icon='TRIA_UP').direction = 'UP'
+            c.operator('swingult.swing_bone_params_collision_move', text="", icon='TRIA_DOWN').direction = 'DOWN'
 classlist.append(SwingData_Swing_Bone_Params)
 
 class SwingData_Swing_Bone(bpy.types.PropertyGroup): # ---------------------------------
@@ -459,6 +756,14 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
     
     index_param : bpy.props.IntProperty()
     
+    def CreateVisualObjects(self, armature_object, bone_name, prc):
+        for i, p in enumerate(self.params):
+            p.CreateVisualObjects(armature_object, bone_name, prc, self)
+    
+    def RemoveVisualObjects(self):
+        for p in self.params:
+            p.RemoveVisualObjects()
+    
     def AddParams(self, copy_active=False):
         p = self.params.add()
         if copy_active and len(self.params) > 0:
@@ -469,6 +774,7 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
     def RemoveParams(self, index=None):
         if index == None:
             index = self.index_param
+        self.params.RemoveVisualObjects()
         self.params.remove(index)
         self.index_param = max(0, min(len(self.params)-1, self.index_param))
     
@@ -492,12 +798,25 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
             self.index_param = newindex
     
     def ClearParams(self):
-        for i in range(0, len(self.params)):
-            self.params.remove(0)
+        [self.RemoveParams(0) for i in range(0, len(self.params))]
         self.index_param = 0
     
     def GetParamsActive(self):
         return self.params[self.index_param]
+    
+    # Returns list of bone names from param indices
+    def CalcParamNames(self):
+        bonename = self.start_bonename
+        if self.start_bonename[-1] in "0123456789":
+            boneindexstart = int(self.start_bonename[-1])
+            return [bonename[:-1] + str(i+boneindexstart) for i,p in enumerate(self.params)]
+        else:
+            return list(set(self.start_bonename, self.end_bonename))
+    
+    # Returns true if bone name is in param chain
+    def BoneNameInChain(self, name):
+        bonenames = [x.lower() for x in self.CalcParamNames()]
+        return name.lower() in bonenames
     
     def CopyFromOther(self, other):
         if self == other or not other:
@@ -529,7 +848,28 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
         out += SerializeSbyte("curverotatex", self.curverotatex, tabs)
         out += SerializeSbyte("0x0f7316a113", self.unknown_0x0f7316a113, tabs)
         return out
+
+    def DrawPanel(self, layout):
+        b = layout.box().column(align=True)
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        
+        if swing_ultimate.show_search:
+            b.prop_search(self, 'name', swing_ultimate, 'prc_labels_bonename')
+            b.prop_search(self, 'start_bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+            b.prop_search(self, 'end_bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+        else:
+            b.prop(self, 'name')
+            b.prop(self, 'start_bonename', icon='BONE_DATA')
+            b.prop(self, 'end_bonename', icon='BONE_DATA')
+        
+        c = b.column(align=True)
+        c.prop(self, 'isskirt')
+        c.prop(self, 'rotateorder')
+        c.prop(self, 'curverotatex')
+        c.prop(self, 'unknown_0x0f7316a113')
 classlist.append(SwingData_Swing_Bone)
+
+"------------------------------------------------------------------------------------------------"
 
 class SwingData_Swing_CollisionSphere(bpy.types.PropertyGroup): # ---------------------------------
     type = 'SPHERE'
@@ -541,7 +881,46 @@ class SwingData_Swing_CollisionSphere(bpy.types.PropertyGroup): # --------------
     cz : bpy.props.FloatProperty()
     radius : bpy.props.FloatProperty()
     
-    object : bpy.props.PointerProperty(type=bpy.types.Object)
+    visual_object : bpy.props.PointerProperty(type=bpy.types.Object)
+    
+    def CreateVisualObjects(self, armature_object, prc):
+        bone_name = ([b.name for b in armature_object.data.bones if b.name.lower() == self.bonename.lower()]+[""])[0]
+        if bone_name == "":
+            print("> No bone named %s for %s %s" % (self.bonename, self.type, self.name))
+            return
+        
+        self.RemoveVisualObjects()
+        context = bpy.context
+        prcindex = list(context.scene.swing_ultimate.data).index(prc)
+        shapeindex = list(prc.GetStructList(self.type)).index(self)
+        obj = CreateVisualShape(self.name, self.type)
+        self.visual_object = obj
+        
+        sk = obj.data.shape_keys
+        key_blocks = sk.key_blocks
+        key_blocks['radius'].value = self.radius
+        key_blocks['cx'].value = self.cx
+        key_blocks['cy'].value = self.cy
+        key_blocks['cz'].value = self.cz
+        
+        dpath = 'swing_ultimate.data[%d].spheres[%d]' % (prcindex, shapeindex)
+        
+        DriverPropertyVariable(sk, 'key_blocks["radius"].value', "x", "SCENE", context.scene, dpath+'.radius', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["cx"].value', "x", "SCENE", context.scene, dpath+'.cx', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["cy"].value', "x", "SCENE", context.scene, dpath+'.cy', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["cz"].value', "x", "SCENE", context.scene, dpath+'.cz', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        c = obj.constraints.new(type='COPY_LOCATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+        
+        c = obj.constraints.new(type='COPY_ROTATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+    
+    def RemoveVisualObjects(self):
+        if self.visual_object:
+            bpy.data.objects.remove(self.visual_object, do_unlink=True)
     
     def CopyFromOther(self, other):
         self.name = other.name
@@ -560,6 +939,26 @@ class SwingData_Swing_CollisionSphere(bpy.types.PropertyGroup): # --------------
         out += SerializeFloat("cz", self.cz, tabs)
         out += SerializeFloat("radius", self.radius, tabs)
         return out
+
+    def DrawPanel(self, layout):
+        b = layout.box().column(align=False)
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        
+        c = b.column(align=True)
+        if swing_ultimate.show_search:
+            c.prop_search(self, 'name', swing_ultimate, 'prc_labels_collisions', icon=STRUCTICONS[self.type])
+            c.prop_search(self, 'bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+        else:
+            c.prop(self, 'name')
+            c.prop(self, 'bonename', icon='BONE_DATA')
+        
+        c = b.column(align=True)
+        r = c.row(align=True)
+        r.label(text="Offset:")
+        r.prop(self, 'cx', text="")
+        r.prop(self, 'cy', text="")
+        r.prop(self, 'cz', text="")
+        c.prop(self, 'radius')
 classlist.append(SwingData_Swing_CollisionSphere)
 
 class SwingData_Swing_CollisionOval(bpy.types.PropertyGroup): # ---------------------------------
@@ -572,7 +971,7 @@ class SwingData_Swing_CollisionOval(bpy.types.PropertyGroup): # ----------------
     cz : bpy.props.FloatProperty()
     radius : bpy.props.FloatProperty()
     
-    object : bpy.props.PointerProperty(type=bpy.types.Object)
+    visual_object : bpy.props.PointerProperty(type=bpy.types.Object)
     
     def CopyFromOther(self, other):
         self.name = other.name
@@ -608,7 +1007,53 @@ class SwingData_Swing_CollisionEllipsoid(bpy.types.PropertyGroup): # -----------
     sy : bpy.props.FloatProperty()
     sz : bpy.props.FloatProperty()
     
-    object : bpy.props.PointerProperty(type=bpy.types.Object)
+    visual_object : bpy.props.PointerProperty(type=bpy.types.Object)
+    
+    def CreateVisualObjects(self, armature_object, prc):
+        bone_name = ([b.name for b in armature_object.data.bones if b.name.lower() == self.bonename.lower()]+[""])[0]
+        if bone_name == "":
+            print("> No bone named %s for %s %s" % (self.bonename, self.type, self.name))
+            return
+        
+        self.RemoveVisualObjects()
+        context = bpy.context
+        prcindex = list(context.scene.swing_ultimate.data).index(prc)
+        shapeindex = list(prc.GetStructList(self.type)).index(self)
+        obj = CreateVisualShape(self.name, self.type)
+        self.visual_object = obj
+        
+        sk = obj.data.shape_keys
+        key_blocks = sk.key_blocks
+        key_blocks['cx'].value = self.cx
+        key_blocks['cy'].value = self.cy
+        key_blocks['cz'].value = self.cz
+        key_blocks['rx'].value = self.rx
+        key_blocks['ry'].value = self.ry
+        key_blocks['rz'].value = self.rz
+        key_blocks['sx'].value = self.sx
+        key_blocks['sy'].value = self.sy
+        key_blocks['sz'].value = self.sz
+        
+        dpath = 'swing_ultimate.data[%d].ellipsoids[%d]' % (prcindex, shapeindex)
+        DriverPropertyVariable(sk, 'key_blocks["cx"].value', "x", "SCENE", context.scene, dpath+'.cx', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["cy"].value', "x", "SCENE", context.scene, dpath+'.cy', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["cz"].value', "x", "SCENE", context.scene, dpath+'.cz', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        DriverPropertyVariable(sk, 'key_blocks["sx"].value', "x", "SCENE", context.scene, dpath+'.sx', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["sy"].value', "x", "SCENE", context.scene, dpath+'.sy', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["sz"].value', "x", "SCENE", context.scene, dpath+'.sz', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        c = obj.constraints.new(type='COPY_LOCATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+        
+        c = obj.constraints.new(type='COPY_ROTATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+    
+    def RemoveVisualObjects(self):
+        if self.visual_object:
+            bpy.data.objects.remove(self.visual_object, do_unlink=True)
     
     def CopyFromOther(self, other):
         self.name = other.name
@@ -637,6 +1082,38 @@ class SwingData_Swing_CollisionEllipsoid(bpy.types.PropertyGroup): # -----------
         out += SerializeFloat("sy", self.sy, tabs)
         out += SerializeFloat("sz", self.sz, tabs)
         return out
+
+    def DrawPanel(self, layout):
+        b = layout.box().column(align=False)
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        
+        c = b.column(align=True)
+        if swing_ultimate.show_search:
+            c.prop_search(self, 'name', swing_ultimate, 'prc_labels_collisions', icon=STRUCTICONS['ELLIPSOID'])
+            c.prop_search(self, 'bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+        else:
+            c.prop(self, 'name', icon=STRUCTICONS['ELLIPSOID'])
+            c.prop(self, 'bonename', icon='BONE_DATA')
+        
+        c = b.column(align=False)
+        
+        r = c.row(align=True)
+        r.label(text="Offset:")
+        r.prop(self, 'cx', text="")
+        r.prop(self, 'cy', text="")
+        r.prop(self, 'cz', text="")
+        
+        r = c.row(align=True)
+        r.label(text="Rotation:")
+        r.prop(self, 'rx', text="")
+        r.prop(self, 'ry', text="")
+        r.prop(self, 'rz', text="")
+        
+        r = c.row(align=True)
+        r.label(text="Scale:")
+        r.prop(self, 'sx', text="")
+        r.prop(self, 'sy', text="")
+        r.prop(self, 'sz', text="")        
 classlist.append(SwingData_Swing_CollisionEllipsoid)
 
 class SwingData_Swing_CollisionCapsule(bpy.types.PropertyGroup): # ---------------------------------
@@ -654,8 +1131,82 @@ class SwingData_Swing_CollisionCapsule(bpy.types.PropertyGroup): # -------------
     start_radius : bpy.props.FloatProperty()
     end_radius : bpy.props.FloatProperty()
     
-    object_start : bpy.props.PointerProperty(type=bpy.types.Object)
-    object_end : bpy.props.PointerProperty(type=bpy.types.Object)
+    visual_object : bpy.props.PointerProperty(type=bpy.types.Object)
+    
+    def CreateVisualObjects(self, armature_object, prc):
+        bone_name = ([b.name for b in armature_object.data.bones if b.name.lower() == self.start_bonename.lower()]+[""])[0]
+        if bone_name == "":
+            print("> No bone named %s for %s %s" % (self.start_bonename, self.type, self.name))
+            return
+        
+        endpbone = ([pb for pb in armature_object.data.bones if pb.name.lower() == self.end_bonename]+[None])[0]
+        
+        self.RemoveVisualObjects()
+        context = bpy.context
+        prcindex = list(context.scene.swing_ultimate.data).index(prc)
+        shapeindex = list(prc.GetStructList(self.type)).index(self)
+        obj = CreateVisualShape(self.name, self.type)
+        self.visual_object = obj
+        
+        sk = obj.data.shape_keys
+        key_blocks = sk.key_blocks
+        key_blocks['start_offset_x'].value = self.start_offset_x
+        key_blocks['start_offset_y'].value = self.start_offset_y
+        key_blocks['start_offset_z'].value = self.start_offset_z
+        key_blocks['end_offset_x'].value = self.end_offset_x
+        key_blocks['end_offset_y'].value = self.end_offset_y
+        key_blocks['end_offset_z'].value = self.end_offset_z
+        key_blocks['start_radius'].value = self.start_radius
+        key_blocks['end_radius'].value = self.end_radius
+        
+        dpath = 'swing_ultimate.data[%d].capsules[%d]' % (prcindex, shapeindex)
+        DriverPropertyVariable(sk, 'key_blocks["start_offset_x"].value', "x", "SCENE", context.scene, dpath+'.start_offset_x', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["start_offset_y"].value', "x", "SCENE", context.scene, dpath+'.start_offset_y', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["start_offset_z"].value', "x", "SCENE", context.scene, dpath+'.start_offset_z', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        DriverPropertyVariable(sk, 'key_blocks["end_offset_x"].value', "x", "SCENE", context.scene, dpath+'.end_offset_x', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["end_offset_y"].value', "x", "SCENE", context.scene, dpath+'.end_offset_y', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["end_offset_z"].value', "x", "SCENE", context.scene, dpath+'.end_offset_z', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        DriverPropertyVariable(sk, 'key_blocks["start_radius"].value', "x", "SCENE", context.scene, dpath+'.start_radius', 'x/%.2f' % VISUALSHAPESCALE)
+        DriverPropertyVariable(sk, 'key_blocks["end_radius"].value', "x", "SCENE", context.scene, dpath+'.end_radius', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        c = obj.constraints.new(type='COPY_LOCATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+    
+        if endpbone:
+            c = obj.constraints.new(type='TRACK_TO')
+            c.target = armature_object
+            c.subtarget = endpbone.name
+            c.track_axis = 'TRACK_Y'
+            c.up_axis = 'UP_Z'
+            
+            # Stretch to bone length
+            d = sk.animation_data.drivers.new('key_blocks["length"].value').driver
+            
+            v = d.variables.new()
+            v.name = "x"
+            v.type = 'LOC_DIFF'
+            v.targets[0].id = armature_object
+            v.targets[0].bone_target = bone_name
+            
+            v.targets[1].id = armature_object
+            v.targets[1].bone_target = endpbone.name
+            
+            d.type = 'SCRIPTED'
+            d.expression = 'x/%.2f' % VISUALSHAPESCALE
+        else:
+            c = obj.constraints.new(type='TRACK_TO')
+            c.target = armature_object
+            c.subtarget = bone_name
+            c.head_tail = 1.0
+            c.track_axis = 'TRACK_Y'
+            c.up_axis = 'UP_Z'
+    
+    def RemoveVisualObjects(self):
+        if self.visual_object:
+            bpy.data.objects.remove(self.visual_object, do_unlink=True)
     
     def CopyFromOther(self, other):
         self.name = other.name
@@ -684,6 +1235,37 @@ class SwingData_Swing_CollisionCapsule(bpy.types.PropertyGroup): # -------------
         out += SerializeFloat("start_radius", self.start_radius, tabs)
         out += SerializeFloat("end_radius", self.end_radius, tabs)
         return out
+
+    def DrawPanel(self, layout):
+        b = layout.box().column(align=False)
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        
+        c = b.column(align=True)
+        if swing_ultimate.show_search:
+            c.prop_search(self, 'name', swing_ultimate, 'prc_labels_collisions', icon=STRUCTICONS['CAPSULE'])
+            c.prop_search(self, 'start_bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+            c.prop_search(self, 'end_bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+        else:
+            c.prop(self, 'name', icon=STRUCTICONS['CAPSULE'])
+            c.prop(self, 'start_bonename', icon='BONE_DATA')
+            c.prop(self, 'end_bonename', icon='BONE_DATA')
+        
+        c = b.column(align=True)
+        
+        r = c.row(align=True)
+        r.label(text="Start Offset:")
+        r.prop(self, 'start_offset_x', text="")
+        r.prop(self, 'start_offset_y', text="")
+        r.prop(self, 'start_offset_z', text="")
+        
+        r = c.row(align=True)
+        r.label(text="End Offset:")
+        r.prop(self, 'end_offset_x', text="")
+        r.prop(self, 'end_offset_y', text="")
+        r.prop(self, 'end_offset_z', text="")
+        
+        c.prop(self, 'start_radius', text="Start Radius")
+        c.prop(self, 'end_radius', text="End Radius")
 classlist.append(SwingData_Swing_CollisionCapsule)
 
 class SwingData_Swing_CollisionPlane(bpy.types.PropertyGroup): # ---------------------------------
@@ -695,6 +1277,41 @@ class SwingData_Swing_CollisionPlane(bpy.types.PropertyGroup): # ---------------
     ny : bpy.props.FloatProperty()
     nz : bpy.props.FloatProperty()
     distance : bpy.props.FloatProperty()
+    
+    visual_object : bpy.props.PointerProperty(type=bpy.types.Object)
+    
+    def CreateVisualObjects(self, armature_object, prc):
+        bone_name = ([b.name for b in armature_object.data.bones if b.name.lower() == self.bonename.lower()]+[""])[0]
+        if bone_name == "":
+            print("> No bone named %s for %s %s" % (self.bonename, self.type, self.name))
+            return
+        
+        self.RemoveVisualObjects()
+        context = bpy.context
+        prcindex = list(context.scene.swing_ultimate.data).index(prc)
+        shapeindex = list(prc.GetStructList(self.type)).index(self)
+        obj = CreateVisualShape(self.name, self.type)
+        self.visual_object = obj
+        
+        sk = obj.data.shape_keys
+        key_blocks = sk.key_blocks
+        key_blocks['distance'].value = self.distance
+        
+        dpath = 'swing_ultimate.data[%d].planes[%d]' % (prcindex, shapeindex)
+        
+        DriverPropertyVariable(sk, 'key_blocks["distance"].value', "x", "SCENE", context.scene, dpath+'.distance', 'x/%.2f' % VISUALSHAPESCALE)
+        
+        c = obj.constraints.new(type='COPY_LOCATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+        
+        c = obj.constraints.new(type='COPY_ROTATION')
+        c.target = armature_object
+        c.subtarget = bone_name
+    
+    def RemoveVisualObjects(self):
+        if self.visual_object:
+            bpy.data.objects.remove(self.visual_object, do_unlink=True)
     
     def CopyFromOther(self, other):
         self.name = other.name
@@ -713,9 +1330,31 @@ class SwingData_Swing_CollisionPlane(bpy.types.PropertyGroup): # ---------------
         out += SerializeFloat("nz", self.nz, tabs)
         out += SerializeFloat("distance", self.distance, tabs)
         return out
+
+    def DrawPanel(self, layout):
+        b = layout.box().column(align=False)
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        
+        c = b.column(align=True)
+        if swing_ultimate.show_search:
+            c.prop_search(self, 'name', swing_ultimate, 'prc_labels_collisions', icon=STRUCTICONS['PLANE'])
+            c.prop_search(self, 'bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+        else:
+            c.prop(self, 'name', icon=STRUCTICONS['PLANE'])
+            c.prop(self, 'bonename', icon='BONE_DATA')
+        
+        c = b.column(align=True)
+        r = c.row(align=True)
+        r.label(text="Normal:")
+        r.prop(self, 'nx')
+        r.prop(self, 'ny')
+        r.prop(self, 'nz')
+        c.prop(self, 'distance')
 classlist.append(SwingData_Swing_CollisionPlane)
 
 class SwingData_Swing_Connection(bpy.types.PropertyGroup): # ---------------------------------
+    type = 'CONNECTION'
+    
     start_bonename : bpy.props.StringProperty()
     end_bonename : bpy.props.StringProperty()
     radius : bpy.props.FloatProperty()
@@ -734,9 +1373,25 @@ class SwingData_Swing_Connection(bpy.types.PropertyGroup): # -------------------
         out += SerializeFloat("radius", self.radius, tabs)
         out += SerializeFloat("length", self.length, tabs)
         return out
+
+    def DrawPanel(self, layout):
+        b = layout.box().column(align=True)
+        
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        
+        if swing_ultimate.show_search:
+            b.prop_search(self, 'start_bonename', swing_ultimate, 'prc_labels_swingbone', icon='BONE_DATA')
+            b.prop_search(self, 'end_bonename', swing_ultimate, 'prc_labels_swingbone', icon='BONE_DATA')
+        else:
+            b.prop(self, 'start_bonename', icon='BONE_DATA')
+            b.prop(self, 'end_bonename', icon='BONE_DATA')
+        
+        c = b.column(align=True)
+        c.prop(self, 'radius')
+        c.prop(self, 'length')
 classlist.append(SwingData_Swing_Connection)
 
-"================================================================================================"
+"------------------------------------------------------------------------------------------------"
 
 class SwingData(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(name=" Name")
@@ -789,13 +1444,20 @@ class SwingData(bpy.types.PropertyGroup):
         return datalist[index] if len(datalist) > 0 else None
     
     # Returns struct by name
-    def FindStruct(self, type, name):
+    def FindStruct(self, type, name, case_sensitive=False):
         structlist = self.GetStructList(type)
-        return ([x for x in structlist if x.name == name]+[None])[0]
+        if case_sensitive:
+            return ([x for x in structlist if x.name == name]+[None])[0]
+        else:
+            return ([x for x in structlist if x.name.lower() == name.lower()]+[None])[0]
     
     # Returns size of struct list
     def GetStructListSize(self, type):
         return len(self.GetStructList(type))
+    
+    # Returns total number of shapes
+    def GetShapeCount(self):
+        return len(self.spheres) + len(self.ovals) + len(self.ellipsoids) + len(self.capsules) + len(self.planes)
     
     # Returns active index for struct type
     def GetStructActiveIndex(self, type):
@@ -835,6 +1497,22 @@ class SwingData(bpy.types.PropertyGroup):
         return self.GetStruct(type, self.GetStructActiveIndex(type))
         return None
     
+    # Returns (swingbone, params) if bone name is in swing bone chain, (None, None) if not found
+    def FindBoneParamsByName(self, bonename):
+        if bonename[-1] in "0123456789":
+            for sb in self.swingbones:
+                if sb.start_bonename[-1] in "0123456789":
+                    boneindexstart = int(sb.start_bonename[-1])
+                    for i, p in enumerate(sb.params):
+                        paramname = sb.start_bonename[:-1] + str(boneindexstart+i)
+                        if paramname.lower() == bonename.lower():
+                            return (sb, p)
+        else:
+            for sb in self.swingbones:
+                if sb.start_bonename.lower() == bonename.lower():
+                    return (sb, sb.params[0] if sb.params else None)
+        return (None, None)
+    
     # Updates and clamps struct indices
     def Update(self):
         self.index_bone = max(0, min(len(self.GetStructList('BONE'))-1, self.index_bone))
@@ -862,6 +1540,8 @@ class SwingData(bpy.types.PropertyGroup):
     def RemoveStruct(self, type, index=None):
         if index == None:
             index = self.GetStructActiveIndex(type)
+        if type in SHAPENAMES:
+            self.GetStructActive(type).RemoveVisualObjects()
         self.GetStructList(type).remove(index)
         self.Update()
     
@@ -912,58 +1592,6 @@ class SwingData(bpy.types.PropertyGroup):
         for p in b1.params:
             b2.AddParams().CopyFromOther(p)
         return True
-    
-    # Creates visual objects for collision shapes (BETA)
-    def CreateVisuals(self, armatureobject):
-        lowernames = {b.name.lower(): b for b in armatureobject.pose.bones}
-        
-        # Sphere
-        sourceobject = bpy.data.objects['swingprc_sphere']
-        [bpy.data.objects.remove(x) for x in bpy.data.objects if (x != sourceobject and sourceobject.name in x.name)]
-        
-        for entry in self.GetStructList('SPHERE'):
-            obj = NewVisualObject(sourceobject, armatureobject, entry.bonename)
-            obj.name = obj.name + entry.name
-            
-            obj.data.shape_keys.key_blocks["cx"].value = entry.cx
-            obj.data.shape_keys.key_blocks["cy"].value = entry.cy
-            obj.data.shape_keys.key_blocks["cz"].value = entry.cz
-            obj.data.shape_keys.key_blocks["radius"].value = entry.radius
-        
-        # Ellipsoid
-        sourceobject = bpy.data.objects['swingprc_ellipsoid']
-        [bpy.data.objects.remove(x) for x in bpy.data.objects if (x != sourceobject and sourceobject.name in x.name)]
-        
-        for entry in self.GetStructList('ELLIPSOID'):
-            obj = NewVisualObject(sourceobject, armatureobject, entry.bonename)
-            obj.name = obj.name + entry.name
-            
-            obj.data.shape_keys.key_blocks["cx"].value = entry.cx
-            obj.data.shape_keys.key_blocks["cy"].value = entry.cy
-            obj.data.shape_keys.key_blocks["cz"].value = entry.cz
-            obj.data.shape_keys.key_blocks["sx"].value = entry.sx
-            obj.data.shape_keys.key_blocks["sy"].value = entry.sy
-            obj.data.shape_keys.key_blocks["sz"].value = entry.sz
-        
-        # Capsule
-        sourceobject = bpy.data.objects['swingprc_capsule']
-        [bpy.data.objects.remove(x) for x in bpy.data.objects if (x != sourceobject and sourceobject.name in x.name)]
-        
-        for entry in self.GetStructList('CAPSULE'):
-            obj = NewVisualObject(sourceobject, armatureobject, entry.start_bonename, entry.end_bonename)
-            obj.name = obj.name + entry.name
-            
-            obj.data.shape_keys.key_blocks["start_radius"].value = entry.start_radius
-            obj.data.shape_keys.key_blocks["end_radius"].value = entry.end_radius
-            obj.data.shape_keys.key_blocks["start_offset_x"].value = entry.start_offset_x
-            obj.data.shape_keys.key_blocks["start_offset_y"].value = entry.start_offset_y
-            obj.data.shape_keys.key_blocks["start_offset_z"].value = entry.start_offset_z
-            obj.data.shape_keys.key_blocks["end_offset_x"].value = entry.end_offset_x
-            obj.data.shape_keys.key_blocks["end_offset_y"].value = entry.end_offset_y
-            obj.data.shape_keys.key_blocks["end_offset_z"].value = entry.end_offset_z
-            
-            if entry.start_bonename.lower() in lowernames:
-                obj.data.shape_keys.key_blocks["length"].value = bonemap[entry.start_bonename].length
     
     # Adds new struct and copies data from reference struct
     def TransferStruct(self, other, type, structindex):
@@ -1268,26 +1896,49 @@ class SwingData(bpy.types.PropertyGroup):
         print()
     
     # Generate collision groups from bones
-    def GenerateCollisionGroups(self):
+    def GenerateCollisionGroups(self, validate=True):
         self.ClearStructList('GROUP')
+        
+        swing_ultimate = bpy.context.scene.swing_ultimate
+        validgroups = swing_ultimate.prc_labels_collisions
+        if len(validgroups) == 0:
+            validate = False
+        
+        invalidgroups = [] # (groupname, param)
         
         for b in self.GetStructList('BONE'):
             for i, p in enumerate(b.params):
-                group = self.AddStruct('GROUP')
-                group.name = (
+                groupname =  (
                     b.start_bonename if b.start_bonename == b.end_bonename else
                     b.start_bonename[:-1] + str(i+1)
                 ) + "col"
-                print("> Group \"%s\"" % group.name)
+                
+                if (validate and groupname not in validgroups):
+                    invalidgroups.append((groupname, p))
+                    continue
+                
+                print("> Group \"%s\"" % groupname)
+                group = self.AddStruct('GROUP')
+                group.name = groupname
+                
                 for c in p.collisions:
                     if c.hash40:
                         group.Add(c.hash40)
-                # 33
+        
+        for groupname, p in invalidgroups:
+            groupname = swing_ultimate.GetActiveData().FindClosestGroupLabel(groupname)[0]
+            print("> Group \"%s\"" % groupname)
+            group = self.AddStruct('GROUP')
+            group.name = groupname
+            
+            for c in p.collisions:
+                if c.hash40:
+                    group.Add(c.hash40)
     
     # Returns label lose enough to given string
     def FindClosestGroupLabel(self, label, print_count=8):
         usedlabels = [g.name for g in self.groups]
-        targetlabels = [x for x in bpy.context.scene.swing_ultimate.prc_labels_string.split() if x not in usedlabels]
+        targetlabels = [x.name for x in bpy.context.scene.swing_ultimate.prc_labels_collisions if x.name not in usedlabels]
         
         Sqr = lambda x: x*x
         Abs = lambda x: x if x >= 0 else -x
@@ -1295,7 +1946,29 @@ class SwingData(bpy.types.PropertyGroup):
         
         targetlabels.sort(key=lambda x: sum([ Abs(ord(c1)-ord(c2)) for c1,c2 in zip(label, x)] ) + Sqr(len(x)-labeln) )
         return targetlabels[:print_count]
+
 classlist.append(SwingData)
+
+Items_SwingData_Properties_UIView = (
+    ('BONE', "Swing Bone", "", STRUCTICONS['BONE'], 0),
+    ('SHAPE', "Shape", "", 'PHYSICS', 1),
+    ('CONNECTION', "Connection", "", STRUCTICONS['CONNECTION'], 2),
+    ('GROUP', "Group", "", STRUCTICONS['GROUP'], 3),
+)
+
+Items_SwingData_Properties_UISwing = (
+    ('BONE', "Swing Bone", ""),
+    ('PARAM', "Parameters", ""),
+    ('BOTH', "BOTH", ""),
+)
+
+Items_SwingData_Properties_UIShape = (
+    ('SPHERE', "Sphere", "", STRUCTICONS['SPHERE'], 0),
+    ('OVAL', "Oval", "", STRUCTICONS['OVAL'], 1),
+    ('ELLIPSOID', "Ellipsoid", "", STRUCTICONS['ELLIPSOID'], 2),
+    ('CAPSULE', "Capsule", "", STRUCTICONS['CAPSULE'], 3),
+    ('PLANE', "Plane", "", STRUCTICONS['PLANE'], 4),
+)
 
 class SwingSceneData(bpy.types.PropertyGroup):
     data : bpy.props.CollectionProperty(type=SwingData)
@@ -1303,49 +1976,23 @@ class SwingSceneData(bpy.types.PropertyGroup):
     count : bpy.props.IntProperty()
     
     prc_labels_string : bpy.props.StringProperty(default="")
+    prc_labels_roots : bpy.props.StringProperty(default="")
+    
+    prc_labels_bonename : bpy.props.CollectionProperty(type=SwingData_Label)
+    prc_labels_swingbone : bpy.props.CollectionProperty(type=SwingData_Label)
+    prc_labels_collisions : bpy.props.CollectionProperty(type=SwingData_Label)
+    
     show_search : bpy.props.BoolProperty(name="Show Label Search", default=False)
     
-    ui_view_left : bpy.props.EnumProperty(items = (
-        ('BONE', "Swing Bone", ""),
-        ('SHAPE', "Collision Shape", ""),
-        ('CONNECTION', "Connection", ""),
-        ('GROUP', "Group", ""),
-    ))
+    ui_view_left : bpy.props.EnumProperty(items=Items_SwingData_Properties_UIView)
+    ui_swing_left : bpy.props.EnumProperty(items=Items_SwingData_Properties_UISwing)
+    ui_shape_left : bpy.props.EnumProperty(items=Items_SwingData_Properties_UIShape)
     
-    ui_swing_left : bpy.props.EnumProperty(items = (
-        ('BONE', "Swing Bone", ""),
-        ('PARAM', "Parameters", ""),
-        ('BOTH', "BOTH", ""),
-    ))
+    ui_view_right : bpy.props.EnumProperty(items=Items_SwingData_Properties_UIView)
+    ui_swing_right : bpy.props.EnumProperty(items=Items_SwingData_Properties_UISwing)
+    ui_shape_right : bpy.props.EnumProperty(items=Items_SwingData_Properties_UIShape)
     
-    ui_shape_left : bpy.props.EnumProperty(items = (
-        ('SPHERE', "Sphere", ""),
-        ('OVAL', "Oval", ""),
-        ('ELLIPSOID', "Ellipsoid", ""),
-        ('CAPSULE', "Capsule", ""),
-        ('PLANE', "Plane", ""),
-    ))
-    
-    ui_view_right : bpy.props.EnumProperty(items = (
-        ('BONE', "Swing Bone", ""),
-        ('SHAPE', "Collision Shape", ""),
-        ('CONNECTION', "Connection", ""),
-        ('GROUP', "Group", ""),
-    ))
-    
-    ui_swing_right : bpy.props.EnumProperty(items = (
-        ('BONE', "Swing Bone", ""),
-        ('PARAM', "Parameters", ""),
-        ('BOTH', "BOTH", ""),
-    ))
-    
-    ui_shape_right : bpy.props.EnumProperty(items = (
-        ('SPHERE', "Sphere", ""),
-        ('OVAL', "Oval", ""),
-        ('ELLIPSOID', "Ellipsoid", ""),
-        ('CAPSULE', "Capsule", ""),
-        ('PLANE', "Plane", ""),
-    ))
+    properties_split_view : bpy.props.BoolProperty(name="Split View", default=False)
     
     def FindPRCIndex(self, name):
         return [x.index for x in self.data if x.name == name][0]
@@ -1400,7 +2047,35 @@ class SwingSceneData(bpy.types.PropertyGroup):
                 r[1] + " "
                 for r in labels if sum([1 for x in r[1] if x.upper() in "QWERTYUIOPASDFGHJKLZXCVBNM"])
             )
-        print("> Labels updated")
+            
+            self.prc_labels_bonename.clear()
+            self.prc_labels_swingbone.clear()
+            self.prc_labels_collisions.clear()
+            
+            # Generate String Lists ---------------------------------
+            nextlabels = []
+            swingnames = []
+            
+            # Swing
+            for hex, label in labels:
+                if label[:2] == 's_' and label[-3:] != 'col':
+                    self.prc_labels_swingbone.add().name = label
+                    swingnames.append(label)
+                else:
+                    nextlabels.append(label)
+            
+            # Bone
+            for label in nextlabels:
+                if label[-3:] == 'col':
+                    self.prc_labels_collisions.add().name = label
+                elif sum([1 for x in swingnames if 's_'+(label) == x]):
+                    self.prc_labels_bonename.add().name = label
+                
+        
+        print("> Labels updated. Count = %d" % len(labels))
+        print("> %d Swing Names" % len(self.prc_labels_bonename))
+        print("> %d Swing Bones" % len(self.prc_labels_swingbone))
+        print("> %d Swing Collisions" % len(self.prc_labels_collisions))
     
     # Returns label matching or close enough to given string
     def FindClosestLabel(self, label, print_count=8):
@@ -1412,7 +2087,21 @@ class SwingSceneData(bpy.types.PropertyGroup):
         
         targetlabels.sort(key=lambda x: sum([ Abs(ord(c1)-ord(c2)) for c1,c2 in zip(label, x)] ) + Sqr(len(x)-labeln) )
         return targetlabels[:print_count]
-        
+    
+    # Refreshes drivers for visuals
+    def UpdateVisuals(self):
+        for prc in self.data:
+            for sbone in prc.swingbones:
+                for param in sbone.params:
+                    objs = []
+                    if param.object_minangley:
+                        objs.append(param.object_minangley)
+                    if param.object_minanglez:
+                        objs.append(param.object_minanglez)
+                    for obj in objs:
+                        if obj.animation_data:
+                            for fc in obj.animation_data.drivers:
+                                fc.driver.expression = fc.driver.expression
 classlist.append(SwingSceneData)
 
 "================================================================================================"
@@ -1504,22 +2193,6 @@ class SWINGULT_OP_SwingData_ToXML(bpy.types.Operator, ExportHelper):
 classlist.append(SWINGULT_OP_SwingData_ToXML)
 
 # ----------------------------------------------------------------------------------------
-class SWINGULT_OP_SwingData_Visualize(bpy.types.Operator):
-    bl_idname = "swingult.visualize"
-    bl_label = "Visualize Swing Data (BETA)"
-    bl_description = "Creates shapes for collisions from active swing data"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    @classmethod
-    def poll(self, context):
-        return context.object and context.object.type == 'ARMATURE'
-    
-    def execute(self, context):
-        out = context.scene.swing_ultimate.GetActiveData().CreateVisuals(context.object)
-        return {'FINISHED'}
-#classlist.append(SWINGULT_OP_SwingData_Visualize)
-
-# ----------------------------------------------------------------------------------------
 class SWINGULT_OP_SwingData_Clean(bpy.types.Operator):
     bl_idname = "swingult.clean"
     bl_label = "Clean Swing Data (BETA)"
@@ -1559,7 +2232,7 @@ class SWINGULT_OP_SwingData_Validate(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_SwingData_Validate)
 
-# =========================================================================================================
+"# ========================================================================================================="
 
 class SWINGULT_OP_SwingDataStruct_New(bpy.types.Operator): 
     bl_idname = "swingult.struct_add"
@@ -1605,7 +2278,7 @@ class SWINGULT_OP_SwingDataStruct_Move(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_SwingDataStruct_Move)
 
-# =========================================================================================================
+"# ========================================================================================================="
 
 class SWINGULT_OP_SwingBone_Transfer(bpy.types.Operator): 
     bl_idname = "swingult.swing_bone_transfer"
@@ -1711,7 +2384,7 @@ class SWINGULT_OP_SwingBoneParamsCollision_Move(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_SwingBoneParamsCollision_Move)
 
-# =========================================================================================================
+"# ========================================================================================================="
 
 class SWINGULT_OP_Struct_Transfer(bpy.types.Operator): 
     bl_idname = "swingult.struct_transfer"
@@ -1819,29 +2492,365 @@ classlist.append(SWINGULT_OP_SwingData_PrintReferences)
 class SWINGULT_OP_SwingData_GenerateCollisionGroups(bpy.types.Operator): 
     bl_idname = "swingult.generate_collision_groups"
     bl_label = "Generate Collision Groups"
-    bl_description = "Prints all instances of given string in swing data"
+    bl_description = "Creates collision groups using parameter bone names for each swing bone"
     bl_options = {'REGISTER', 'UNDO'}
     
+    validate : bpy.props.BoolProperty(
+        name="Validate",
+        description="Groups are only created if generated name is in loaded labels",
+        default=True
+        )
+        
+    @classmethod
+    def poll(self, context):
+        return context.scene.swing_ultimate.data
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
     def execute(self, context):
-        context.scene.swing_ultimate.GetActiveData().GenerateCollisionGroups()
+        context.scene.swing_ultimate.GetActiveData().GenerateCollisionGroups(self.validate)
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_SwingData_GenerateCollisionGroups)
 
+"# ========================================================================================================="
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_CreateParamVisuals(bpy.types.Operator): 
+    bl_idname = "swingult.create_parameter_visuals"
+    bl_label = "Create Swing Bone Parameter Visuals"
+    bl_description = "Creates rotation visuals for selected pose bones"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    prc : bpy.props.StringProperty(name="Swing PRC")
+    foundbones = []
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE'
+    
+    def invoke(self, context, event):
+        prc = context.scene.swing_ultimate.GetActiveData()
+        self.prc = prc.name
+        self.bone_name = context.active_pose_bone.name if context.active_pose_bone else ""
+        
+        self.foundbones = []
+        
+        for pb in context.object.pose.bones:
+            if pb.bone.select:
+                sbone, param = prc.FindBoneParamsByName(pb.name)
+                if param:
+                    self.foundbones.append(pb.name)
+        self.foundbones = list(set(self.foundbones))
+        
+        return context.window_manager.invoke_props_dialog(self, width=400)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'prc', context.scene.swing_ultimate, 'data')
+        c = layout.column()
+        r = c.row()
+        r.alignment = 'CENTER'
+        r.label(text="== Selected Swing Bones ==")
+        g = c.column_flow(columns=3)
+        for b in self.foundbones:
+            g.label(text=b, icon=STRUCTICONS['BONE'])
+    
+    def execute(self, context):
+        prc = context.scene.swing_ultimate.GetActiveData()
+        
+        for pb in context.object.pose.bones:
+            if pb.bone.select:
+                sbone, param = prc.FindBoneParamsByName(pb.name)
+                if param:
+                    sbone, param = prc.FindBoneParamsByName(pb.name)
+                    print("> Creating visuals for %s" % pb.name)
+                    param.CreateVisualObjects(context.object, pb.name, prc, sbone)
+                    
+        
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_CreateParamVisuals)
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_CreateShapeVisuals(bpy.types.Operator): 
+    bl_idname = "swingult.create_shape_visuals"
+    bl_label = "Create Swing Shape Visuals"
+    bl_description = "Creates visuals for collision shapes"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    prc : bpy.props.StringProperty(name="Swing PRC")
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE'
+    
+    def invoke(self, context, event):
+        prc = context.scene.swing_ultimate.GetActiveData()
+        self.prc = prc.name
+        return context.window_manager.invoke_props_dialog(self, width=400)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'prc', context.scene.swing_ultimate, 'data')
+        layout.label(text="Armature: " + str(context.object.name), icon='ARMATURE_DATA')
+    
+    def execute(self, context):
+        prc = context.scene.swing_ultimate.GetActiveData()
+        
+        for shape in prc.GetShapeList():
+            print("> Creating visuals for %s %s" % (shape.type, shape.name))
+            shape.CreateVisualObjects(context.object, prc)
+        
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_CreateShapeVisuals)
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_SymmetrizeParams(bpy.types.Operator): 
+    bl_idname = "swingult.symmetrize_parameters"
+    bl_label = "Symmetrize Parameters"
+    bl_description = "Copies parameters of selected swing bones to mirrored bone on X-Axis"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    values : bpy.props.BoolProperty(name="Copy Values", default=True)
+    collisions : bpy.props.BoolProperty(name="Copy Collisions", default=False)
+    
+    flip_z : bpy.props.BoolProperty(name="Flip Z", default=False)
+    flip_y : bpy.props.BoolProperty(name="Flip Y", default=False)
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        prc = context.scene.swing_ultimate.GetActiveData()
+        shapenames = [x.name for x in prc.GetShapeList()]
+        
+        for pb in context.object.pose.bones:
+            if pb.bone.select:
+                sbone, param = prc.FindBoneParamsByName(pb.name)
+                if param:
+                    flipname = FlipSmashName(pb.name)
+                    
+                    if flipname != pb.name:
+                        sbone2, param2 = prc.FindBoneParamsByName(flipname)
+                        if param2:
+                            print("> %s -> %s" % (pb.name, flipname) )
+                            param2.CopyFromOther(param, self.values, self.collisions)
+                            
+                            if self.values:
+                                if self.flip_z:
+                                    pair = (param2.minanglez, param2.maxanglez)
+                                    param2.minanglez = -pair[0]
+                                    param2.maxanglez = -pair[1]
+                                if self.flip_y:
+                                    pair = (param2.minangley, param2.maxangley)
+                                    param2.minangley = -pair[0]
+                                    param2.maxangley = -pair[1]
+        
+        bpy.ops.object.mode_set(mode='POSE')
+        
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_SymmetrizeParams)
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_CopyParamsToSelected(bpy.types.Operator): 
+    bl_idname = "swingult.active_params_to_selected"
+    bl_label = "Copy Active Params To Selected"
+    bl_description = "Copies parameters of active swing bones to selected bones"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    copy_chain : bpy.props.BoolProperty(
+        name="Copy Chain",
+        description="Copy parameter values by index in bone chain",
+        default=True,
+        )
+    values : bpy.props.BoolProperty(name="Copy Values", default=True)
+    collisions : bpy.props.BoolProperty(name="Copy Collisions", default=False)
+    
+    flip_z : bpy.props.BoolProperty(name="Flip Z", default=False)
+    flip_y : bpy.props.BoolProperty(name="Flip Y", default=False)
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone
+    
+    def execute(self, context):
+        pbactive = context.active_pose_bone
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        prc = context.scene.swing_ultimate.GetActiveData()
+        
+        sboneactive, paramactive = prc.FindBoneParamsByName(pbactive.name)
+        
+        print(self.copy_chain)
+        
+        # Respect indices
+        if self.copy_chain:
+            print("> Copy Chain:")
+            
+            posebones = tuple(context.object.pose.bones)
+            
+            selectednames = [pb.name.lower() for pb in posebones if pb.bone.select]
+            paramnames = [x.lower() for x in sboneactive.CalcParamNames()]
+            chainindices = [i for i,x in enumerate(paramnames) if x.lower() in selectednames]
+            
+            for pb in context.object.pose.bones:
+                if pb.name.lower() in paramnames:
+                    continue
+                
+                if pb.bone.select:
+                    sbone, param = prc.FindBoneParamsByName(pb.name)
+                    if param:
+                        paramindex = list(sbone.params).index(param)
+                        
+                        if paramindex in chainindices:
+                            print("> %s -> %s" % (paramnames[paramindex], pb.name) )
+                            
+                            param.CopyFromOther(sboneactive.params[paramindex], self.values, self.collisions)
+                            
+                            if self.values:
+                                if self.flip_z:
+                                    pair = (param.minanglez, param.maxanglez)
+                                    param.minanglez = -pair[0]
+                                    param.maxanglez = -pair[1]
+                                if self.flip_y:
+                                    pair = (param.minangley, param.maxangley)
+                                    param.minangley = -pair[0]
+                                    param.maxangley = -pair[1]
+        # Active to selected
+        else:
+            print("> Copy Active:")
+            for pb in context.object.pose.bones:
+                if pb == pbactive:
+                    continue
+                
+                if pb.bone.select:
+                    sbone, param = prc.FindBoneParamsByName(pb.name)
+                    if param:
+                        print("> %s -> %s" % (pbactive.name, pb.name) )
+                        param.CopyFromOther(paramactive, self.values, self.collisions)
+                        
+                        if self.values:
+                            if self.flip_z:
+                                pair = (param.minanglez, param.maxanglez)
+                                param.minanglez = -pair[0]
+                                param.maxanglez = -pair[1]
+                            if self.flip_y:
+                                pair = (param.minangley, param.maxangley)
+                                param.minangley = -pair[0]
+                                param.maxangley = -pair[1]
+        
+        bpy.ops.object.mode_set(mode='POSE')
+        
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_CopyParamsToSelected)
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_ToggleVisualObjects(bpy.types.Operator): 
+    bl_idname = "swingult.visual_toggle_swing_objects"
+    bl_label = "Toggle Visual Bone Objects"
+    bl_description = "Toggles visibility of visual swing bone objects"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    selected_only : bpy.props.BoolProperty(name="Selected Only", default=True)
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone
+    
+    def execute(self, context):
+        visobjects = [
+            x
+            for sbone in context.scene.swing_ultimate.GetActiveData().swingbones
+            for param in sbone.params
+            for x in (param.object_minangley, param.object_minanglez)
+        ]
+        
+        if self.selected_only:
+            selectedpbonenames = tuple([pb.name.lower() for pb in context.object.pose.bones if pb.bone.select])
+            visobjects = []
+            
+            for sbone in context.scene.swing_ultimate.GetActiveData().swingbones:
+                paramnames = [x.lower() for x in sbone.CalcParamNames()]
+                visobjects += [
+                    x
+                    for i,param in enumerate(sbone.params) if paramnames[i] in selectedpbonenames
+                    for x in (param.object_minangley, param.object_minanglez)
+                ]
+        else:
+            visobjects = [
+                x
+                for sbone in context.scene.swing_ultimate.GetActiveData().swingbones
+                for param in sbone.params
+                for x in (param.object_minangley, param.object_minanglez)
+            ]
+        
+        allon = sum([(not obj.hide_viewport) for obj in visobjects]) == len(visobjects)
+        for obj in visobjects:
+            obj.hide_viewport = allon
+        
+        # Update Dependencies
+        context.scene.swing_ultimate.UpdateVisuals()
+            
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_ToggleVisualObjects)
+
+# ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_IsloateSwingBoneVisibility(bpy.types.Operator): 
+    bl_idname = "swingult.isolate_swing_bones_visibility"
+    bl_label = "Isolate Swing Pose Bones"
+    bl_description = "Hides/unhides pose bones without \"s_\" prefix"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        pbones = tuple(context.object.pose.bones)
+        swingbones = [pb for pb in pbones if pb.name[:2].lower() == "s_"]
+        nonswingbones = [pb for pb in pbones if pb.name[:2].lower() != "s_"]
+        
+        # Unhide other bones if all swing bones are visible
+        if sum([pb.bone.hide for pb in nonswingbones]) == len(nonswingbones):
+            print("Revealing")
+            for pb in nonswingbones:
+                pb.bone.hide = False
+        else:
+            print("Hiding")
+            for pb in nonswingbones:
+                pb.bone.hide = True
+        
+        # Update Dependencies
+        context.scene.swing_ultimate.UpdateVisuals()
+        
+        bpy.ops.object.mode_set(mode='POSE')
+        
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_IsloateSwingBoneVisibility)
+
 "================================================================================================"
-"LAYOUT"
+"UI LIST"
 "================================================================================================"
 
 class SWINGULT_UL_SwingEdit(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
+        r = layout.row(align=True)
         r.label(text='[%d] %s' % (index, item.name))
 classlist.append(SWINGULT_UL_SwingEdit)
 
 # --------------------------------------------------------------------------
 class SWINGULT_UL_SwingData_SwingBone(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
-        r.label(text='[%d]: %s' % (index, item.name))
+        r = layout.row(align=True)
+        r.prop(item, 'name', text='[%d]' % index, emboss=False)
         rr = r.row()
         rr.scale_x = 0.8
         rr.label(text="(Size %d)" % len(item.params))
@@ -1850,22 +2859,26 @@ classlist.append(SWINGULT_UL_SwingData_SwingBone)
 # --------------------------------------------------------------------------
 class SWINGULT_UL_SwingData_SwingBone_Params(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
+        r = layout.row(align=True)
         r.label(text='Bone {0}: ({1} Collisions)'.format(index, len(item.collisions)), icon='PROPERTIES')
 classlist.append(SWINGULT_UL_SwingData_SwingBone_Params)
 
 # --------------------------------------------------------------------------
 class SWINGULT_UL_SwingData_SwingBone_Params_Collisions(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
-        r.prop(item, 'hash40', text='[%d]' % index, icon='PHYSICS')
+        r = layout.row(align=True)
+        swing_ultimate = context.scene.swing_ultimate
+        if swing_ultimate.show_search:
+            r.prop_search(item, 'hash40', swing_ultimate, 'prc_labels_collisions', text='[%d]' % index, icon='PHYSICS')
+        else:
+            r.prop(item, 'hash40', text='[%d]:' % index, icon='PHYSICS')
 classlist.append(SWINGULT_UL_SwingData_SwingBone_Params_Collisions)
 
 # --------------------------------------------------------------------------
 class SWINGULT_UL_SwingData_CollisionStruct(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
-        r.label(text='[%d] %s' % (index, item.name))
+        r = layout.row(align=True)
+        r.label(text='[%d] %s' % (index, item.name), icon=STRUCTICONS[item.type])
         r = r.row()
         r.scale_x = 0.9
         if item.type == 'CAPSULE':
@@ -1877,16 +2890,20 @@ classlist.append(SWINGULT_UL_SwingData_CollisionStruct)
 # --------------------------------------------------------------------------
 class SWINGULT_UL_SwingData_Connection(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
-        r.label(text='[%d] (%s) ... (%s)' % (index, item.start_bonename, item.end_bonename))
+        r = layout.row(align=True)
+        r.label(text='[%d]: (%s) ... (%s)' % (index, item.start_bonename, item.end_bonename), icon=STRUCTICONS['CONNECTION'])
 classlist.append(SWINGULT_UL_SwingData_Connection)
 
 # --------------------------------------------------------------------------
 class SWINGULT_UL_SwingData_Group(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        r = layout.row(align=1)
-        r.label(text='[%d] %s (%s)' % (index, item.name, item.size))
+        r = layout.row(align=True)
+        r.label(text='[%d]: %s (%s)' % (index, item.name, item.size), icon=STRUCTICONS['GROUP'])
 classlist.append(SWINGULT_UL_SwingData_Group)
+
+"================================================================================================"
+"PANELS"
+"================================================================================================"
 
 # =========================================================================================================
 class SWINGULT_PT_SwingData_Scene(bpy.types.Panel):
@@ -1904,18 +2921,20 @@ class SWINGULT_PT_SwingData_Scene(bpy.types.Panel):
         if not prc:
             layout.operator('swingult.new', icon='ADD', text="New List")
         else:
-            c = layout.column(align=1)
-            r = c.row(align=1)
+            c = layout.column(align=True)
+            r = c.row(align=True)
             r.prop(swing_ultimate, 'index', text='', icon='PRESET', icon_only=1)
             r.prop(swing_ultimate.GetActiveData(), 'name', text="")
-            r = r.row(align=1)
+            r = r.row(align=True)
             r.operator('swingult.new', icon='ADD', text="")
             r.operator('swingult.remove', icon='REMOVE', text="").index = swing_ultimate.GetActiveIndex()
             
-            r = c.row(align=1)
+            r = c.row(align=True)
             r.operator('swingult.update_labels', text="Update Labels")
             #r.prop(swing_ultimate, 'show_search', text="Show Search", toggle=True)
             r.operator('swingult.clear_labels', text="", icon='X')
+            r = c.row(align=True)
+            r.prop(swing_ultimate, 'show_search', text="Show Search For Strings")
 classlist.append(SWINGULT_PT_SwingData_Scene)
 
 # ---------------------------------------------------------------------------------------
@@ -1943,7 +2962,7 @@ class SWINGULT_PT_SwingData_3DView(bpy.types.Panel):
             
             r = col.row()
             r.operator('swingult.xml_read', icon='IMPORT', text="From XML")
-            r.operator('swingult.xml_save', icon='EXPORT', text="Serialize")
+            r.operator('swingult.xml_save', icon='EXPORT', text="To XML")
             #r.operator('swingult.visualize', icon='MESH_UVSPHERE', text="Visualize")
             
             r = col.row()
@@ -1952,30 +2971,78 @@ class SWINGULT_PT_SwingData_3DView(bpy.types.Panel):
             r.operator('swingult.print_references', icon='ZOOM_ALL', text="Find References")
             
             col.operator('swingult.generate_collision_groups', icon='SYSTEM', text="Generate Collision Groups")
+            
+            # Draw sizes
+            c = layout.column(align=True)
+            r = c.box().row(align=True)
+            r.scale_y = 0.6
+            for type in ['BONE', 'CONNECTION', 'GROUP']:
+                r.label(text=str(prc.GetStructListSize(type)), icon=STRUCTICONS[type])
+            
+            r.label(text=str(prc.GetShapeCount()), icon='PHYSICS')
+            
+            r = c.box().row(align=True)
+            r.scale_y = 0.6
+            
+            shapetypes = ['SPHERE', 'ELLIPSOID', 'CAPSULE', 'PLANE']
+            shapetypes = ['SPHERE', 'OVAL', 'ELLIPSOID', 'CAPSULE', 'PLANE']
+            
+            for type in shapetypes:
+                rr = r.row()
+                rr.scale_x = 0.5
+                rr.label(text=str(prc.GetStructListSize(type)), icon=STRUCTICONS[type])
 classlist.append(SWINGULT_PT_SwingData_3DView)
 
+# ---------------------------------------------------------------------------------------
+class SWINGULT_PT_PoseMode_3DView(bpy.types.Panel): 
+    bl_label = "Active Armature"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "SwingUlt" # Name of sidebar
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def DrawLayout(self, context, layout):
+        c = layout.column()
+        c.operator('swingult.create_shape_visuals', icon='PHYSICS', text="Create Shape Visuals")
+        
+        c.separator()
+        
+        c.operator('swingult.create_parameter_visuals', icon='BONE_DATA', text="Create Param Visuals")
+        r = c.row().split(factor=0.8, align=1)
+        r.operator('swingult.visual_toggle_swing_objects', icon='RESTRICT_SELECT_OFF').selected_only = True
+        r.operator('swingult.visual_toggle_swing_objects', text="All", icon='WORLD').selected_only = False
+        c.operator('swingult.symmetrize_parameters')
+        c.operator('swingult.active_params_to_selected')
+        c.operator('swingult.isolate_swing_bones_visibility')
+        
+        if context.object and context.object.type == 'ARMATURE':
+            pb = context.active_pose_bone
+            if pb:
+                swing_ultimate = context.scene.swing_ultimate
+                prc = swing_ultimate.GetActiveData()
+                
+                sbone, param = prc.FindBoneParamsByName(pb.name)
+                if sbone:
+                    sbone.DrawPanel(layout)
+                    
+                    if param:
+                        layout.label(text=pb.name + " = %s.params[%d]" % (sbone.name, list(sbone.params).index(param)))
+                        r = layout.row()
+                        r.operator('swingult.create_parameter_visuals', text="Create Visuals")
+                        
+                        rr = r.row(align=True)
+                        rr.scale_x = 0.8
+                        if param.object_minangley:
+                            rr.prop(param.object_minangley, 'hide_viewport', invert_checkbox=True, text="Show Y")
+                        if param.object_minanglez:
+                            rr.prop(param.object_minanglez, 'hide_viewport', invert_checkbox=True, text="Show Z")
+                        
+                        param.DrawPanel(layout)
+    
+    def draw(self, context):
+        self.DrawLayout(context, self.layout)
+classlist.append(SWINGULT_PT_PoseMode_3DView)
 "========================================================================================================="
-
-def DrawStructUIList(self, layout, prc, type, typename, list_pt, varname, indexname):
-    r = layout.row(align=1)
-    r.template_list(list_pt, "", prc, varname, prc, indexname, rows=5)
-    
-    c = r.column(align=1)
-    c.operator('swingult.struct_add', text="", icon='ADD').type = type
-    c.operator('swingult.struct_remove', text="", icon='REMOVE').type = type
-    
-    c.separator()
-    op = c.operator('swingult.struct_move', text="", icon='TRIA_UP')
-    op.type = type
-    op.direction = 'UP'
-    op = c.operator('swingult.struct_move', text="", icon='TRIA_DOWN')
-    op.type = type
-    op.direction = 'DOWN'
-    
-    c.separator()
-    op = c.operator('swingult.struct_transfer', text="", icon='PASTEDOWN')
-    op.type = type
-    op.target_prc = prc.name
 
 class StructPanelSuper(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
@@ -1998,16 +3065,14 @@ class SWINGULT_PT_SwingData_3DView_SwingBoneHeader(StructPanelSuper):
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive(type)
         
-        self.bl_label = "Swing Bones (%d)" % prc.GetStructListSize(type)
-        
         if not entry:
             col.operator('swingult.struct_add', text="New Swing Bone").type = type
         else:
-            r = col.row(align=1)
+            r = col.row(align=True)
             r.template_list(
                 "SWINGULT_UL_SwingData_SwingBone", "", prc, "swingbones", prc, "index_bone", rows=5)
             
-            c = r.column(align=1)
+            c = r.column(align=True)
             
             c.operator('swingult.struct_add', text="", icon='ADD').type = type
             c.operator('swingult.struct_remove', text="", icon='REMOVE').type = type
@@ -2044,23 +3109,7 @@ class SWINGULT_PT_SwingData_3DView_SwingBone(StructPanelSuper):
         entry = prc.GetStructActive(type)
         
         if entry:
-            b = col.box().column(align=1)
-            
-            if swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', swing_ultimate, 'prc_labels')
-                #b.prop_search(entry, 'start_bonename', swing_ultimate, 'prc_labels', icon='BONE_DATA')
-                #b.prop_search(entry, 'end_bonename', swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'name')
-                b.prop(entry, 'start_bonename', icon='BONE_DATA')
-                b.prop(entry, 'end_bonename', icon='BONE_DATA')
-            
-            c = b.column(align=1)
-            c.prop(entry, 'isskirt')
-            c.prop(entry, 'rotateorder')
-            c.prop(entry, 'curverotatex')
-            c.prop(entry, 'unknown_0x0f7316a113')
+            entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2076,18 +3125,19 @@ class SWINGULT_PT_SwingData_3DView_SwingBone_Params(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def DrawLayout(self, context, layout):
-        col = layout.box()
+        layout = layout.column(align=False)
         prc = context.scene.swing_ultimate.GetActiveData()
         swingbone = prc.GetStructActive('BONE')
         
         if swingbone:
-            self.bl_label = SUBPANELLABELSPACE + "Params (%d)" % len(swingbone.params)
+            layout.prop(swingbone, 'name', text="", emboss=False, icon=STRUCTICONS['BONE'])
             
-            r = col.row(align=1)
+            r = layout.row(align=True)
             r.template_list(
                 "SWINGULT_UL_SwingData_SwingBone_Params", "", swingbone, "params", swingbone, "index_param", rows=3)
             
-            c = r.column(align=1)
+            c = r.column(align=True)
+            c.scale_y = 0.95
             c.operator('swingult.swing_bone_params_add', text="", icon='ADD')
             c.operator('swingult.swing_bone_params_remove', text="", icon='REMOVE')
             c.separator()
@@ -2096,38 +3146,7 @@ class SWINGULT_PT_SwingData_3DView_SwingBone_Params(bpy.types.Panel):
             
             if swingbone.params:
                 entry = swingbone.params[swingbone.index_param]
-                
-                b = col.column(align=1)
-                
-                c = b.column(align=1)
-                c.prop(entry, 'airresistance')
-                c.prop(entry, 'waterresistance')
-                c.prop(entry, 'minanglez')
-                c.prop(entry, 'maxanglez')
-                c.prop(entry, 'minangley')
-                c.prop(entry, 'maxangley')
-                c.prop(entry, 'collisionsizetip')
-                c.prop(entry, 'collisionsizeroot')
-                c.prop(entry, 'frictionrate')
-                c.prop(entry, 'goalstrength')
-                c.prop(entry, 'unknown_0x0cc10e5d3a')
-                c.prop(entry, 'localgravity', expand=True)
-                c.prop(entry, 'fallspeedscale')
-                c.prop(entry, 'groundhit')
-                c.prop(entry, 'windaffect')
-                
-                b2 = b.box().column()
-                r = b2.row(align=1)
-                r.operator('swingult.swing_bone_params_collision_add', text="New Collision", icon='ADD')
-                r.operator('swingult.swing_bone_params_collision_remove', text="Remove Active", icon='REMOVE')
-                
-                r = b2.row(align=1)
-                r.template_list(
-                    "SWINGULT_UL_SwingData_SwingBone_Params_Collisions", "", entry, "collisions", entry, "index_collision", rows=3)
-                
-                c = r.column(align=1)
-                c.operator('swingult.swing_bone_params_collision_move', text="", icon='TRIA_UP').direction = 'UP'
-                c.operator('swingult.swing_bone_params_collision_move', text="", icon='TRIA_DOWN').direction = 'DOWN'
+                entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2152,27 +3171,12 @@ class SWINGULT_PT_SwingData_3DView_Spheres(StructPanelSuper):
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive('SPHERE')
         
-        #self.bl_label = SUBPANELLABELSPACE + "Spheres (%d)" % prc.GetStructListSize(type)
+        DrawStructUIList(layout, prc, 'SPHERE', 'SWINGULT_UL_SwingData_CollisionStruct', "spheres", "index_sphere")
         
         if not entry:
             col.operator('swingult.struct_add', text="New Sphere").type = type
         else:
-            DrawStructUIList(self, col, prc, type, "Sphere", 'SWINGULT_UL_SwingData_CollisionStruct', "spheres", "index_sphere")
-            
-            b = col.box().column(align=1)
-            if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
-                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'name')
-                b.prop(entry, 'bonename', icon='BONE_DATA')
-            
-            c = b.column(align=1)
-            c.prop(entry, 'cx')
-            c.prop(entry, 'cy')
-            c.prop(entry, 'cz')
-            c.prop(entry, 'radius')
+            entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2189,27 +3193,12 @@ class SWINGULT_PT_SwingData_3DView_Ovals(StructPanelSuper):
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive('OVAL')
         
-        self.bl_label = SUBPANELLABELSPACE + "Ovals (%d)" % prc.GetStructListSize(type)
+        DrawStructUIList(layout, prc, 'OVAL', 'SWINGULT_UL_SwingData_CollisionStruct', "ovals", "index_oval")
         
         if not entry:
             col.operator('swingult.struct_add', text="New Oval").type = type
         else:
-            DrawStructUIList(self, col, prc, type, "Oval", 'SWINGULT_UL_SwingData_CollisionStruct', "ovals", "index_oval")
-            
-            b = col.box().column(align=1)
-            if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
-                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'name')
-                b.prop(entry, 'bonename', icon='BONE_DATA')
-            
-            c = b.column()
-            c.prop(entry, 'cx')
-            c.prop(entry, 'cy')
-            c.prop(entry, 'cz')
-            c.prop(entry, 'radius')
+            entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2222,37 +3211,16 @@ class SWINGULT_PT_SwingData_3DView_Ellipsoids(StructPanelSuper):
     
     def DrawLayout(self, context, layout):
         type = 'ELLIPSOID'
-        col = layout
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive('ELLIPSOID')
         
-        self.bl_label = SUBPANELLABELSPACE + "Ellipsoids (%d)" % prc.GetStructListSize(type)
+        DrawStructUIList(layout, prc, type, 'SWINGULT_UL_SwingData_CollisionStruct', "ellipsoids", "index_ellipsoid")
         
         if not entry:
-            col.operator('swingult.struct_add', text="New Ellipsoid").type = type
+            layout.operator('swingult.struct_add', text="New Ellipsoid").type = type
         else:
-            DrawStructUIList(self, col, prc, type, "Ellipsoid", 'SWINGULT_UL_SwingData_CollisionStruct', "ellipsoids", "index_ellipsoid")
-            
-            b = col.box().column(align=1)
-            if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
-                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'name')
-                b.prop(entry, 'bonename', icon='BONE_DATA')
-            
-            c = b.column(align=1)
-            c.prop(entry, 'cx')
-            c.prop(entry, 'cy')
-            c.prop(entry, 'cz')
-            c.prop(entry, 'rx')
-            c.prop(entry, 'ry')
-            c.prop(entry, 'rz')
-            c.prop(entry, 'sx')
-            c.prop(entry, 'sy')
-            c.prop(entry, 'sz')
-    
+            entry.DrawPanel(layout)
+        
     def draw(self, context):
         self.DrawLayout(context, self.layout)
 classlist.append(SWINGULT_PT_SwingData_3DView_Ellipsoids)
@@ -2264,38 +3232,15 @@ class SWINGULT_PT_SwingData_3DView_Capsules(StructPanelSuper):
     
     def DrawLayout(self, context, layout):
         type = 'CAPSULE'
-        col = layout
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive('CAPSULE')
         
-        self.bl_label = SUBPANELLABELSPACE + "Capsules (%d)" % prc.GetStructListSize(type)
+        DrawStructUIList(layout, prc, 'CAPSULE', 'SWINGULT_UL_SwingData_CollisionStruct', "capsules", "index_capsule")
         
         if not entry:
-            col.operator('swingult.struct_add', text="New Capsule").type = type
+            layout.operator('swingult.struct_add', text="New Capsule").type = type
         else:
-            DrawStructUIList(self, col, prc, type, "Capsule", 'SWINGULT_UL_SwingData_CollisionStruct', "capsules", "index_capsule")
-            
-            b = col.box().column(align=1)
-            
-            if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
-                #b.prop_search(entry, 'start_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-                #b.prop_search(entry, 'end_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'name')
-                b.prop(entry, 'start_bonename')
-                b.prop(entry, 'end_bonename')
-            
-            c = b.column(align=1)
-            c.prop(entry, 'start_offset_x')
-            c.prop(entry, 'start_offset_y')
-            c.prop(entry, 'start_offset_z')
-            c.prop(entry, 'end_offset_x')
-            c.prop(entry, 'end_offset_y')
-            c.prop(entry, 'end_offset_z')
-            c.prop(entry, 'start_radius')
-            c.prop(entry, 'end_radius')
+            entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2308,31 +3253,15 @@ class SWINGULT_PT_SwingData_3DView_Planes(StructPanelSuper):
     
     def DrawLayout(self, context, layout):
         type = 'PLANE'
-        col = layout
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive('PLANE')
         
-        self.bl_label = SUBPANELLABELSPACE + "Planes (%d)" % prc.GetStructListSize(type)
+        DrawStructUIList(layout, prc, type, 'SWINGULT_UL_SwingData_CollisionStruct', "planes", "index_plane")
         
         if not entry:
             col.operator('swingult.struct_add', text="New Plane").type = type
         else:
-            DrawStructUIList(self, col, prc, type, "Plane", 'SWINGULT_UL_SwingData_CollisionStruct', "planes", "index_plane")
-            
-            b = col.box().column(align=1)
-            if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
-                #b.prop_search(entry, 'bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'name')
-                b.prop(entry, 'bonename', icon='BONE_DATA')
-            
-            c = b.column(align=1)
-            c.prop(entry, 'nx')
-            c.prop(entry, 'ny')
-            c.prop(entry, 'nz')
-            c.prop(entry, 'distance')
+            entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2344,48 +3273,34 @@ class SWINGULT_PT_SwingData_3DView_Connections(StructPanelSuper):
     
     def DrawLayout(self, context, layout):
         type = 'CONNECTION'
-        col = layout
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive('CONNECTION')
         
-        self.bl_label = "Connections (%d)" % prc.GetStructListSize(type)
+        r = layout.row(align=True)
+        
+        r.template_list(
+            "SWINGULT_UL_SwingData_Connection", "", prc, "connections", prc, "index_connection", rows=6)
+        
+        c = r.column(align=True)
+        c.operator('swingult.struct_add', text="", icon='ADD').type = type
+        c.operator('swingult.struct_remove', text="", icon='REMOVE').type = type
+        
+        c.separator()
+        op = c.operator('swingult.struct_move', text="", icon='TRIA_UP')
+        op.type = 'CONNECTION'
+        op.direction = 'UP'
+        op = c.operator('swingult.struct_move', text="", icon='TRIA_DOWN')
+        op.type = 'CONNECTION'
+        op.direction = 'DOWN'
+        
+        c.separator()
+        c.operator('swingult.connections_transfer', text="", icon='PASTEDOWN').target_prc = prc.name
+        c.operator('swingult.connections_transfer_pattern', text="", icon='BORDERMOVE').target_prc = prc.name
         
         if not entry:
-            col.operator('swingult.struct_add', text="New Connection").type = type
+            layout.operator('swingult.struct_add', text="New Connection").type = type
         else:
-            r = col.row(align=1)
-            r.operator('swingult.struct_add', text="New Connection", icon='ADD').type = type
-            r.operator('swingult.struct_remove', text="Remove Active", icon='REMOVE').type = type
-            
-            r = col.row(align=1)
-            r.operator('swingult.connections_transfer', text="Transfer Connection").target_prc = prc.name
-            r.operator('swingult.connections_transfer_pattern', text="... By Pattern").target_prc = prc.name
-            
-            r = col.row(align=1)
-            r.template_list(
-                "SWINGULT_UL_SwingData_Connection", "", prc, "connections", prc, "index_connection", rows=5)
-            
-            c = r.column(align=1)
-            op = c.operator('swingult.struct_move', text="", icon='TRIA_UP')
-            op.type = type
-            op.direction = 'UP'
-            op = c.operator('swingult.struct_move', text="", icon='TRIA_DOWN')
-            op.type = type
-            op.direction = 'DOWN'
-            
-            b = col.box().column(align=1)
-            
-            if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'start_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-                #b.prop_search(entry, 'end_bonename', context.scene.swing_ultimate, 'prc_labels', icon='BONE_DATA')
-            else:
-                b.prop(entry, 'start_bonename', icon='BONE_DATA')
-                b.prop(entry, 'end_bonename', icon='BONE_DATA')
-            
-            c = b.column(align=1)
-            c.prop(entry, 'radius')
-            c.prop(entry, 'length')
+            entry.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
@@ -2397,41 +3312,38 @@ class SWINGULT_PT_SwingData_3DView_Groups(StructPanelSuper):
     
     def DrawLayout(self, context, layout):
         type = 'GROUP'
-        col = self.layout
         prc = context.scene.swing_ultimate.GetActiveData()
         entry = prc.GetStructActive(type)
         
-        self.bl_label = "Groups (%d)" % prc.GetStructListSize(type)
+        r = layout.row(align=True)
+        
+        r.template_list(
+            "SWINGULT_UL_SwingData_Group", "", prc, "groups", prc, "index_group", rows=5)
+        
+        c = r.column(align=True)
+        c.operator('swingult.struct_add', text="", icon='ADD').type = type
+        c.operator('swingult.struct_remove', text="", icon='REMOVE').type = type
+        c.separator()
+        op = c.operator('swingult.struct_move', text="", icon='TRIA_UP')
+        op.type = type
+        op.direction = 'UP'
+        op = c.operator('swingult.struct_move', text="", icon='TRIA_DOWN')
+        op.type = type
+        op.direction = 'DOWN'
         
         if not entry:
-            col.operator('swingult.struct_add', text="New Group").type = type
+            layout.operator('swingult.struct_add', text="New Group").type = type
         else:
-            r = col.row(align=1)
-            r.operator('swingult.struct_add', text="New Group", icon='ADD').type = type
-            r.operator('swingult.struct_remove', text="Remove Active", icon='REMOVE').type = type
             
-            r = col.row(align=1)
-            r.template_list(
-                "SWINGULT_UL_SwingData_Group", "", prc, "groups", prc, "index_group", rows=5)
-            
-            c = r.column(align=1)
-            op = c.operator('swingult.struct_move', text="", icon='TRIA_UP')
-            op.type = type
-            op.direction = 'UP'
-            op = c.operator('swingult.struct_move', text="", icon='TRIA_DOWN')
-            op.type = type
-            op.direction = 'DOWN'
-            
-            b = col.box().column(align=1)
+            b = layout.box().column(align=True)
             if context.scene.swing_ultimate.show_search:
-                []
-                #b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels')
+                b.prop_search(entry, 'name', context.scene.swing_ultimate, 'prc_labels_collisions')
             else:
                 b.prop(entry, 'name')
             
             activegroup = prc.groups[prc.index_group]
             
-            col.template_list(
+            layout.template_list(
                 "SWINGULT_UL_SwingData_SwingBone_Params_Collisions", "", activegroup, "data", activegroup, "active_index", rows=5)
     
     def draw(self, context):
@@ -2467,35 +3379,48 @@ class SWINGULT_PT_SwingData_Properties_Data(bpy.types.Panel):
     bl_parent_id = 'SWINGULT_PT_SwingData_Properties'
     bl_options = {'DEFAULT_CLOSED'}
     
-    def draw(self, context):
+    def DrawLayout(self, context, layout):
         layout = self.layout
         
         swing_ultimate = context.scene.swing_ultimate
         
-        row = layout.row()
+        layout.prop(swing_ultimate, 'properties_split_view')
         
-        c = row.box().column()
+        row = layout.row(align=True)
+        
+        splitview = swing_ultimate.properties_split_view
+        if splitview:
+            rowcolumns = [row.box().column(), row.box().column()]
+        else:
+            rowcolumns = [row.column()]
+        
+        
+        c = rowcolumns[0].column()
         c.row().prop_tabs_enum(swing_ultimate, "ui_view_left")
         if swing_ultimate.ui_view_left == 'BONE':
             c.row().prop_tabs_enum(swing_ultimate, "ui_swing_left")
         elif swing_ultimate.ui_view_left == 'SHAPE':
             c.row().prop_tabs_enum(swing_ultimate, "ui_shape_left")
         
-        c = row.box().column()
-        c.row().prop_tabs_enum(swing_ultimate, "ui_view_right")
-        if swing_ultimate.ui_view_right == 'BONE':
-            c.row().prop_tabs_enum(swing_ultimate, "ui_swing_right")
-        elif swing_ultimate.ui_view_right == 'SHAPE':
-            c.row().prop_tabs_enum(swing_ultimate, "ui_shape_right")
+        viewmeta = [(swing_ultimate.ui_view_left, swing_ultimate.ui_swing_left, swing_ultimate.ui_shape_left)]
         
-        rparent = layout.row(align=0)
-        
-        for view, swingtype, shapetype in (
-            (swing_ultimate.ui_view_left, swing_ultimate.ui_swing_left, swing_ultimate.ui_shape_left),
-            (swing_ultimate.ui_view_right, swing_ultimate.ui_swing_right, swing_ultimate.ui_shape_right)
-            ):
-            c = rparent.box()
+        if splitview:
+            c = rowcolumns[1].column()
+            c.row().prop_tabs_enum(swing_ultimate, "ui_view_right")
+            if swing_ultimate.ui_view_right == 'BONE':
+                c.row().prop_tabs_enum(swing_ultimate, "ui_swing_right")
+            elif swing_ultimate.ui_view_right == 'SHAPE':
+                c.row().prop_tabs_enum(swing_ultimate, "ui_shape_right")
             
+            viewmeta.append((swing_ultimate.ui_view_right, swing_ultimate.ui_swing_right, swing_ultimate.ui_shape_right))
+        
+        rparent = layout.row(align=False)
+        
+        cindex = 0
+        for view, swingtype, shapetype in viewmeta:
+            c = rowcolumns[cindex].column()
+            
+            # Bone
             if view == 'BONE':
                 r = c.row()
                 if swingtype == 'BONE' or swingtype == 'BOTH':
@@ -2508,7 +3433,8 @@ class SWINGULT_PT_SwingData_Properties_Data(bpy.types.Panel):
                 if swingtype == 'PARAM' or swingtype == 'BOTH':
                     c = r.column()
                     c.scale_x = 0.9
-                    c.label(text="Swing Params")
+                    r = c.row()
+                    r.label(text="Swing Params")
                     SWINGULT_PT_SwingData_3DView_SwingBone_Params.DrawLayout(self, context, c)
             
             # Shapes
@@ -2532,9 +3458,21 @@ class SWINGULT_PT_SwingData_Properties_Data(bpy.types.Panel):
                 if shapetype == 'PLANE':
                     c.label(text="Collision Planes")
                     SWINGULT_PT_SwingData_3DView_Planes.DrawLayout(self, context, c)
+            
+            # Connections
+            elif view == 'CONNECTION':
+                SWINGULT_PT_SwingData_3DView_Connections.DrawLayout(self, context, c)
+            
+            # Groups
+            elif view == 'GROUP':
+                SWINGULT_PT_SwingData_3DView_Groups.DrawLayout(self, context, c)
+            
+            cindex += 1
         
         self.bl_label = "Swing Data"
-
+    
+    def draw(self, context):
+        self.DrawLayout(context, self.layout)
 classlist.append(SWINGULT_PT_SwingData_Properties_Data)
 
 "========================================================================================================="
@@ -2545,6 +3483,7 @@ def register():
         bpy.utils.register_class(c)
     
     bpy.types.Scene.swing_ultimate = bpy.props.PointerProperty(name="Swing Data", type=SwingSceneData)
+    bpy.types.PoseBone.swing_ultimate_show_visuals = bpy.props.BoolProperty(name="Show Visuals", default=True)
 
 def unregister():
     for c in classlist[::-1]:
@@ -2552,4 +3491,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
