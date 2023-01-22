@@ -103,8 +103,6 @@ class DMR_OP_GroupActionChannelsByPathName(bpy.types.Operator):
     bl_description = "Groups all channels by their path"
     bl_options = {'REGISTER', 'UNDO'}
     
-    
-    
     def execute(self, context):
         action = context.object.animation_data.action
         
@@ -126,6 +124,34 @@ class DMR_OP_GroupActionChannelsByPathName(bpy.types.Operator):
         
         return {'FINISHED'}
 classlist.append(DMR_OP_GroupActionChannelsByPathName)
+
+# =============================================================================
+
+class DMR_OP_ActionScaleLocation(bpy.types.Operator):
+    bl_label = "Scale Action"
+    bl_idname = 'dmr.action_scale_location'
+    bl_description = "Scale action location keyframes by value"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    action : bpy.props.StringProperty(name="Action Name")
+    scale : bpy.props.FloatProperty()
+    
+    def execute(self, context):
+        if not self.action in bpy.data.actions.keys():
+            self.info({'WARNING'}, "No action exists with name \"%s\"" % self.action)
+        
+        action = bpy.data.actions[self.action]
+        scale = self.scale
+        
+        for fc in action.fcurves:
+            if ".location" in fc.data_path:
+                for k in fc.keyframe_points:
+                    k.co_ui[1] *= scale
+        
+        self.report({'INFO'}, "Action \"%s\" scaled by %s" % (self.action, self.scale))
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_ActionScaleLocation)
 
 # =============================================================================
 
