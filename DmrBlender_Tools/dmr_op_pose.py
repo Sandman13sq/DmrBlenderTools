@@ -17,18 +17,19 @@ class DMR_OP_TogglePoseAll(bpy.types.Operator):
     
     def execute(self, context):
         checked = []
+        targetobjects = [
+            obj for obj in context.scene.objects if obj.type == 'ARMATURE' and obj.visible_get()
+        ]
+        targetobjects += [
+            obj.find_armature() for obj in context.scene.objects if obj.visible_get() and obj.find_armature()
+        ]
         
-        for o in context.scene.objects:
-            if o.type == 'ARMATURE':
-                if o.data in checked:
-                    continue
-                checked.append(o.data)
-                
-                armature = o.data
-                if armature.pose_position == 'REST':
-                    armature.pose_position = 'POSE'
-                else:
-                    armature.pose_position = 'REST'
+        targetobjects = list(set(targetobjects))
+        
+        allrest = sum([1 for obj in targetobjects if obj.data.pose_position == 'REST']) == len(targetobjects)
+        
+        for obj in targetobjects:
+            obj.data.pose_position = 'POSE' if allrest else 'REST'
         return {'FINISHED'}
 classlist.append(DMR_OP_TogglePoseAll)
 
