@@ -10,6 +10,34 @@ bl_info = {
 
 import bpy
 
+COLORICON = (
+    ( (0.7,0.0,0.0), 'SEQUENCE_COLOR_01', "RED" ),
+    ( (0.7,0.5,0.0), 'SEQUENCE_COLOR_02', "ORANGE" ),
+    ( (0.7,0.7,0.0), 'SEQUENCE_COLOR_03', "YELLOW" ),
+    ( (0.0,1.0,0.0), 'SEQUENCE_COLOR_04', "GREEN" ),
+    ( (0.0,0.0,0.7), 'SEQUENCE_COLOR_05', "BLUE" ),
+    ( (0.5,0.0,1.0), 'SEQUENCE_COLOR_06', "PURPLE" ),
+    ( (0.5,0.2,0.5), 'SEQUENCE_COLOR_07', "PINK" ),
+    ( (0.2,0.1,0.0), 'SEQUENCE_COLOR_08', "BROWN" ),
+    ( (0.0,0.0,0.0), 'SEQUENCE_COLOR_09', "BLACK" ),
+)
+
+def GetColorIcon(color):
+    Sqr = lambda x: x*x
+    dist = 10.0
+    outicon = COLORICON[0][1]
+    outname = "None"
+    
+    for c, icon, name in COLORICON:
+        d = sum([Sqr(c[i]-color[i]) for i in range(0, 3)])
+        if d < dist:
+            dist = d
+            outicon = icon
+            outname = name
+            #print([d, icon, name])
+    
+    return outicon
+
 classlist = []
 
 # ======================================================================================
@@ -21,24 +49,34 @@ class DMR_OT_Rigify_FindLayerInfo(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         return context.active_object and context.active_object.type == 'ARMATURE'
-
+    
     def execute(self, context):
         outrig = context.active_object
         metarig = ([x for x in bpy.data.objects if x.type=='ARMATURE' and (x.data.rigify_rig_basename == outrig.name or x.data.rigify_target_rig == outrig)]+[None])[0]
         
         if metarig:
             layers = metarig.data.rigify_layers
+            
+            layerdata = []
+            groupcoloricon = {i+1: GetColorIcon(group.normal) for i,group in enumerate(metarig.data.rigify_colors)}
+            
             outrig.data['rigify_layer_data'] = [
-                [lyr.row, lyr.group]
+                [ 
+                    lyr.row, 
+                    i,
+                    int(groupcoloricon[lyr.group][-1]) if (lyr.group in groupcoloricon.keys()) else 9
+                ]
                 for i, lyr in enumerate(metarig.data.rigify_layers) if lyr.name
             ]
             
             outrig.data['rigify_layer_data'][-1][0] = 28
             
             outrig.data['rigify_layer_name'] = [
-                lyr.name 
+                lyr.name
                 for i, lyr in enumerate(metarig.data.rigify_layers) if lyr.name
             ]
+            
+            outrig.data.rigify_prop_pin.armature_object = outrig
         else:
             self.report({'WARNING'}, 'No meta rig found that targets active object')
         
@@ -186,9 +224,9 @@ class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_MoveRigifyLayerRow)
 
-# =============================================================================
-# PANELS
-# =============================================================================
+'# ================================================================================'
+'# PANELS'
+'# ================================================================================'
 
 class DMR_PT_Rigify_Pose(bpy.types.Panel):
     bl_label = "Rigify Layers"
@@ -241,6 +279,8 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
                 continue
             
             lyrrow = lyrdata[1]
+            lyrindex = lyrdata[2]
+            lyricon = lyrdata[3]
             
             # New Row
             if lyrrow != lastrow:
@@ -260,12 +300,13 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
                 lastrow = lyrrow
                 rowlayers = []
             
-            lyrindex = layers.index(lyrdata) if i < len(sortedlayers)-1 else 28
+            
             rowlayers.append(lyrindex)
             
             # Operators
             rr = r.row(align=1)
-            rr.prop(outrig.data, 'layers', index=lyrindex, text=lyrdata[0], toggle=1)
+            
+            rr.prop(outrig.data, 'layers', index=lyrindex, text=lyrdata[0], toggle=1, icon='SEQUENCE_COLOR_0'+str(lyricon) if lyricon > 0 else 'BLANK1')
             #rr.prop(outrig.data, 'layers', index=lyrindex, text=str(lyrindex), toggle=1)
             rr.operator('dmr.armature_layer_visibility', text='', icon='VIEWZOOM').layers = [x==lyrindex for x in range(0, 32)]
 classlist.append(DMR_PT_Rigify_Pose)
