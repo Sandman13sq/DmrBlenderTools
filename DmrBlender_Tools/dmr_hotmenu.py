@@ -62,16 +62,24 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
             
             for armobj in [obj, obj.find_armature()]:
                 if armobj and armobj.animation_data != None:
-                    r = layout.row()
-                    r.prop(armobj, 'active_action')
-                    if armobj.active_action != armobj.animation_data.action:
-                        r.prop(armobj, 'op_active_action_sync', text='', toggle=True, icon='COPYDOWN')
-                    r.prop(context.scene, 'sync_action_frame_range', text='', toggle=True, icon='FILE_REFRESH')
+                    r = layout.row(align=1)
+                    
+                    r.label(text="", icon=armobj.type+"_DATA")
+                    
+                    if not armobj.animation_data or not armobj.animation_data.action:
+                        rr = r.row(align=1)
+                        rr.scale_x = 1.5
+                        rr.prop(armobj, 'active_action', text="", icon="ACTION", icon_only=True)
+                        r.operator('action.new')
+                    else:
+                        rr = r.row(align=1)
+                        rr.scale_x = 1.5
+                        rr.prop(armobj.animation_data, 'action', text="", icon="ACTION", icon_only=True)
+                        r.prop(armobj.animation_data.action, 'name', text="")
+                        r.prop(armobj.animation_data.action, 'use_fake_user', text="")
+                        r.prop(armobj, 'op_scene_range_from_action', text='', toggle=True, icon='PREVIEW_RANGE')
+                    
         
-        row = layout.row(align=1)
-        row.scale_x = 2.0
-        row.scale_y = 1.0
-        row.alignment = 'CENTER'
 classlist.append(DMR_PT_HotMenu)
 
 # =============================================================================
@@ -79,15 +87,17 @@ classlist.append(DMR_PT_HotMenu)
 def ActionChange(self, context):
     action = self.active_action
     self.animation_data.action = action
-    
-    if action:
-        if context.scene.sync_action_frame_range and action.use_frame_range:
-            context.scene.frame_start = int(action.frame_start)
-            context.scene.frame_end = int(action.frame_end)
+
+def SceneRangeFromAction(self, context):
+    if self.op_scene_range_from_action:
+        action = self.animation_data.action
+        context.scene.frame_start = action.frame_start
+        context.scene.frame_end = action.frame_end
+        self.op_scene_range_from_action = False
 
 def ActionChangeSync(self, context):
     if self.op_active_action_sync:
-        self.active_action = self.animation_data.action
+        self.animation_data.action = self.active_action
         self.op_active_action_sync = False
 
 def register():
@@ -98,8 +108,8 @@ def register():
         name="Action", type=bpy.types.Action, update=ActionChange
     )
     
-    bpy.types.Object.op_active_action_sync = bpy.props.BoolProperty(
-        name="Sync Action", default=False, update=ActionChangeSync
+    bpy.types.Object.op_scene_range_from_action = bpy.props.BoolProperty(
+        name="Set Scene Range From Action", default=False, update=SceneRangeFromAction
     )
     
     bpy.types.Scene.sync_action_frame_range = bpy.props.BoolProperty(
