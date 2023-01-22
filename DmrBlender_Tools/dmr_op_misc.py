@@ -312,6 +312,106 @@ classlist.append(DMR_OP_ModifierOffsetFromCursor)
 
 # =============================================================================
 
+class DMR_OP_QuickMixInnerSolidify(bpy.types.Operator):
+    bl_idname = "dmr.quick_mix_inner_solidify"
+    bl_label = "Quick Mix Inner Solidify"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    solidify : bpy.props.StringProperty(name="Solidify Name")
+    shell_group : bpy.props.StringProperty(name="Shell Group", default="-SOLIDSHELL")
+    rim_group : bpy.props.StringProperty(name="Rim Group", default="-SOLIDRIM")
+    inner_group : bpy.props.StringProperty(name="Inner Group", default="-SOLIDINNER")
+    show_render : bpy.props.BoolProperty(name="Show Render", default=False)
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.modifiers != None
+    
+    def invoke(self, context, event):
+        m = context.object.modifiers.active
+        if m and m.type == 'SOLIDIFY':
+            self.solidify = m.name
+            if m.shell_vertex_group:
+                self.shell_group = m.shell_vertex_group
+            if m.rim_vertex_group:
+                self.rim_group = m.rim_vertex_group
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'solidify', context.object, 'modifiers')
+        layout.prop_search(self, 'shell_group', context.object, 'vertex_groups')
+        layout.prop_search(self, 'rim_group', context.object, 'vertex_groups')
+        layout.prop(self, 'show_render')
+    
+    def execute(self, context):
+        modifiers = context.object.modifiers
+        vgroups = context.object.vertex_groups
+        
+        msolidify = ([m for m in modifiers if m.name == self.solidify]+[None])[0]
+        if not msolidify:
+            msolidify = modifiers.new(name=self.solidify, type='SOLIDIFY')
+        
+        if self.shell_group not in vgroups.keys():
+            vgroups.new(name=self.shell_group)
+        vgshell = vgroups[self.shell_group]
+        
+        if self.rim_group not in vgroups.keys():
+            vgroups.new(name=self.rim_group)
+        vgrim = vgroups[self.rim_group]
+        
+        if self.inner_group not in vgroups.keys():
+            vgroups.new(name=self.inner_group)
+        vginner = vgroups[self.inner_group]
+        
+        msolidify.shell_vertex_group = vgshell.name
+        msolidify.rim_vertex_group = vgrim.name
+        
+        m = modifiers.new(name="VGMix - Shell + Rim", type='VERTEX_WEIGHT_MIX')
+        m.show_expanded = False
+        m.show_render = self.show_render
+        m.vertex_group_a = vgshell.name
+        m.vertex_group_b = vgrim.name
+        m.mix_mode = 'SUB'
+        m.mix_set = 'ALL'
+        
+        m = modifiers.new(name="VGMix - Inner + Shell", type='VERTEX_WEIGHT_MIX')
+        m.show_expanded = False
+        m.show_render = self.show_render
+        m.vertex_group_a = vginner.name
+        m.vertex_group_b = vgshell.name
+        m.mix_mode = 'MUL'
+        m.mix_set = 'ALL'
+        
+        m = modifiers.new(name="Mask - Inner + Shell", type='MASK')
+        m.show_expanded = False
+        m.show_render = self.show_render
+        m.vertex_group = vginner.name
+        m.invert_vertex_group = True
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_QuickMixInnerSolidify)
+
+# =============================================================================
+
+class DMR_OP_ToggleChildrenVisibility(bpy.types.Operator):
+    bl_idname = "dmr.toggle_children_visibility"
+    bl_label = "Toggle Children Visibility"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return context.object
+    
+    def execute(self, context):
+        objects = context.object.children
+        alloff = sum([1 for x in objects if x.hide_get()]) == len(objects)
+        [obj.hide_set(not alloff) for obj in objects]
+        return {'FINISHED'}
+classlist.append(DMR_OP_ToggleChildrenVisibility)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
