@@ -143,6 +143,30 @@ class DMR_OP_SplitAndAlignUVEnds(bpy.types.Operator):
                         otheruvs[1].uv[0] = xpair[1].uv[0]
                         otheruvs[0].uv[1] = mid
                         otheruvs[1].uv[1] = mid
+                
+                # Align with Y
+                else:
+                    ypair.sort(key=lambda x: x.uv[1])
+                    
+                    if n == 3:
+                        otheruv = [x for x in uvs if x not in ypair][0]
+                        otheruv.uv[1] = (ypair[0].uv[1]+ypair[1].uv[1])*0.5
+                        
+                    elif n == 4:
+                        otheruvs = [
+                            uv
+                            for e in edges if sum(1 for x in ypair if x in e) == 1
+                            for uv in e if uv not in ypair
+                        ][::-1]
+                        
+                        #otheruvs = [x for x in uvs if x not in ypair]
+                        #otheruvs.sort(key=lambda x: x.uv[0])
+                        mid = (otheruvs[0].uv[0] + otheruvs[1].uv[0]) * 0.5
+                        
+                        otheruvs[0].uv[1] = ypair[0].uv[0]
+                        otheruvs[1].uv[1] = ypair[1].uv[0]
+                        otheruvs[0].uv[0] = mid
+                        otheruvs[1].uv[0] = mid
         
         bpy.ops.object.mode_set(mode='EDIT')
         return {'FINISHED'}
