@@ -49,6 +49,11 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
         description="Anchors values to lowest keyframe before changing wave",
     )
     
+    cyclic : bpy.props.BoolProperty(
+        name="Cyclic", default=False,
+        description="Adds cyclic modifier to curves",
+    )
+    
     def execute(self, context):
         obj = context.object
         armature = obj.data
@@ -102,15 +107,20 @@ class DMR_OP_KeyframeManip_Wave(bpy.types.Operator):
             
             for chainpos,b in enumerate(bonelink):
                 for fc in fcurvebundles[b.name]:
+                    if self.cyclic:
+                        if 'CYCLES' not in [m.type for m in fc.modifiers]:
+                            fc.modifiers.new(type='CYCLES')
+                    
                     kpoints = tuple([k for k in fc.keyframe_points if k.select_control_point])
-                    k0 = kpoints[0]
-                    
-                    if self.overwrite:
-                        for k in kpoints[::-1]:
-                            k.co_ui[0] -= k0.co_ui[0]
-                    
-                    for k in kpoints:
-                        k.co_ui[0] += foffset + channel_shift*chainindex + chainpos*position_shift
+                    if kpoints:
+                        k0 = kpoints[0]
+                        
+                        if self.overwrite:
+                            for k in kpoints[::-1]:
+                                k.co_ui[0] -= k0.co_ui[0]
+                        
+                        for k in kpoints:
+                            k.co_ui[0] += foffset + channel_shift*chainindex + chainpos*position_shift
         
         return {'FINISHED'}
 classlist.append(DMR_OP_KeyframeManip_Wave)
@@ -486,15 +496,18 @@ class DMR_OP_KeyframeManip_AdjustWave(bpy.types.Operator):
     midpoint : bpy.props.FloatProperty(name="Midpoint", default=0.5, min=0.0, max=1.0)
     
     def execute(self, context):
+        obj = context.object
         action = obj.animation_data.action
-        selectedbonenames = [b.name for b in bones if b.select]
+        selectedbonenames = [b.name for b in obj.data.bones if b.select]
         
         midpoint = self.midpoint
         
         for fc in tuple(action.fcurves):
             if len(fc.keyframe_points) == 3:
-                k = tuple(keyframe_points)
+                k = tuple(fc.keyframe_points)
                 k[1].co_ui[0] = k[0].co_ui[0]+(k[0].co_ui[1]-k[0].co_ui[0])*midpoint
+        
+        return {'FINISHED'}
 classlist.append(DMR_OP_KeyframeManip_AdjustWave)
 
 # =============================================================================
