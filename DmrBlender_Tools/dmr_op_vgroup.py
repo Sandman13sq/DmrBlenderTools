@@ -16,16 +16,25 @@ class DMR_OT_AddVertexGroup(bpy.types.Operator):
     active_only : bpy.props.BoolProperty(name="Active Object Only", default=True)
     assign_selected : bpy.props.BoolProperty(name="Assign Selected Vertices", default=False)
     weight : bpy.props.FloatProperty(name="Weight", default=1.0)
+    type : bpy.props.EnumProperty(name="Weight Type", default='REPLACE', items=(
+        ('REPLACE', "Replace", "Sets vertex weight to value"),
+        ('ADD', "Add", "Add vertex weight"),
+        ('SUBTRACT', "Add", "Add vertex weight")
+    ))
     
     @classmethod
     def poll(self, context):
         return context.active_object is not None
+    
+    def invoke(self, context, event):
+        return self.execute(context)
     
     def draw(self, context):
         layout = self.layout
         layout.prop(self, 'group_name')
         layout.prop(self, 'active_only')
         layout.prop(self, 'assign_selected')
+        layout.prop(self, 'type')
         r = layout.row()
         r.active=self.assign_selected
         r.prop(self, 'weight')
@@ -42,7 +51,7 @@ class DMR_OT_AddVertexGroup(bpy.types.Operator):
             vg = vgroups[self.group_name]
             
             if self.assign_selected:
-                vg.add([v.index for v in obj.data.vertices if v.select], self.weight, 'REPLACE')
+                vg.add([v.index for v in obj.data.vertices if v.select], self.weight, self.type)
         
         bpy.ops.object.mode_set(mode=mode)
         return {'FINISHED'}

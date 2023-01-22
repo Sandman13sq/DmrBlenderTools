@@ -62,7 +62,7 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel):
         r.template_list('DMR_UL_VertexGroups', "", obj, 'vertex_groups', obj.vertex_groups, 'active_index', rows=3)
         
         cc = r.column(align=1)
-        cc.operator('dmr.vertex_group_new', text="", icon='ADD')
+        cc.operator('dmr.vertex_group_new', text="", icon='ADD').group_name = "Group"
         op = cc.operator('object.vertex_group_remove', text="", icon='REMOVE')
         op.all = False
         op.all_unlocked = False
@@ -78,7 +78,11 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel):
         # After List
         rr = layout.row()
         sub = rr.row(align=True)
-        sub.operator("object.vertex_group_assign", text="Assign")
+        op = sub.operator("dmr.vertex_group_new", text="Assign")
+        op.group_name = group.name
+        op.assign_selected = True
+        op.weight = context.tool_settings.vertex_group_weight
+        op.type = 'REPLACE'
         sub.operator("object.vertex_group_remove_from", text="Remove")
 
         sub = rr.row(align=True)
@@ -180,7 +184,6 @@ class DMR_PT_3DViewVertexGroups_UnusedDeforms(bpy.types.Panel):
                 op = rr.operator('dmr.vertex_group_new', text="Assign", icon='GREASEPENCIL')
                 op.group_name = name
                 op.assign_selected = True
-            
 classlist.append(DMR_PT_3DViewVertexGroups_UnusedDeforms)
 
 # =============================================================================
