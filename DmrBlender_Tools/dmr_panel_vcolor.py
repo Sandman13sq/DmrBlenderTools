@@ -2,6 +2,40 @@ import bpy
 
 classlist = []
 
+class DMR_EditModeColorSettings(bpy.types.PropertyGroup):
+    def SyncEditModeEditValueToColor(self, context):
+        context.scene.edit_mode_color_settings.paint_color[:3] = [context.scene.edit_mode_color_settings.paint_value]*3;
+    
+    paint_color : bpy.props.FloatVectorProperty(
+        name="Paint Color", 
+        subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", 
+        size=4, min=0.0, max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
+    paint_value : bpy.props.FloatProperty(
+        name="Paint Value", 
+        default=1, min=0, max=1, 
+        update=SyncEditModeEditValueToColor
+    )
+    
+    paint_channels : bpy.props.BoolVectorProperty(
+        name="Paint Channels", 
+        size=4, 
+        default=(True, True, True, True)
+    )
+    
+    vc_palette_display_width : bpy.props.IntProperty(
+        name="Colors Per Row", 
+        default=1, min=1, max=4
+    )
+    
+    vc_palette_display_count : bpy.props.IntProperty(
+        name="Color Count", 
+        default=16, min=1, max=32
+    )
+classlist.append(DMR_EditModeColorSettings)
+
 # =============================================================================
 
 class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ------------------------------
@@ -23,7 +57,8 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
         active = context.active_object
         mode = active.mode
         layout = self.layout
-        color = bpy.context.scene.editmodecolor
+        colorsettings = context.scene.edit_mode_color_settings
+        color = colorsettings.paint_color
         col255 = [x*255 for x in color[:4]]
         #colhex = '%02x%02x%02x' % (int(color[0]*255), int(color[1]*255), int(color[2]*255))
         #colhex = colhex.upper()
@@ -40,13 +75,13 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
             cc.scale_y = 0.5
             op = cc.operator("dmr.set_vertex_color", icon='BRUSH_DATA', text="")
             op.mix_amount = 1.0
-            op.color = scene.editmodecolor
-            op.channels = scene.editmodechannels
+            op.color = colorsettings.paint_color
+            op.channels = colorsettings.paint_channels
             op = cc.operator("dmr.adjust_vertex_color", icon='CON_TRACKTO', text="")
             
             row.scale_x = 2
             row.scale_y = 2
-            row.prop(context.scene, "editmodecolor", text='')
+            row.prop(colorsettings, "paint_color", text='')
             
             cc = row.column(align=1)
             cc.scale_y = 0.5
@@ -57,26 +92,26 @@ class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ----------------------------
             
             # Channels
             cc = rr.row(align=1)
-            cc.prop(scene, "editmodechannels", index=0, text='', icon='COLOR_RED', toggle=True)
-            cc.prop(scene, "editmodecolor", index=0, text='')
+            cc.prop(colorsettings, "paint_channels", index=0, text='', icon='COLOR_RED', toggle=True)
+            cc.prop(colorsettings, "paint_color", index=0, text='')
             
             cc = rr.row(align=1)
-            cc.prop(scene, "editmodechannels", index=1, text='', icon='COLOR_GREEN', toggle=True)
-            cc.prop(scene, "editmodecolor", index=1, text='')
+            cc.prop(colorsettings, "paint_channels", index=1, text='', icon='COLOR_GREEN', toggle=True)
+            cc.prop(colorsettings, "paint_color", index=1, text='')
             
             cc = rr.row(align=1)
-            cc.prop(scene, "editmodechannels", index=2, text='', icon='COLOR_BLUE', toggle=True)
-            cc.prop(scene, "editmodecolor", index=2, text='')
+            cc.prop(colorsettings, "paint_channels", index=2, text='', icon='COLOR_BLUE', toggle=True)
+            cc.prop(colorsettings, "paint_color", index=2, text='')
             
             cc = rr.row(align=1)
-            cc.prop(scene, "editmodechannels", index=3, text='', icon='FONT_DATA', toggle=True)
-            cc.prop(scene, "editmodecolor", index=3, text='')
+            cc.prop(colorsettings, "paint_channels", index=3, text='', icon='FONT_DATA', toggle=True)
+            cc.prop(colorsettings, "paint_color", index=3, text='')
             
             # Color Meta
             row = col.row(align=0)
             row.label(text = '%d,%d,%d,%d' % (col255[0],col255[1],col255[2], col255[3]) )
             
-            row.prop(scene, "editmodevalue", text='RGB Net', icon='WORLD_DATA')
+            row.prop(colorsettings, "paint_value", text='RGB Net', icon='WORLD_DATA')
             
             row = col.row(align = 1)
             row.operator("dmr.vc_clear_alpha", icon='MATSPHERE', text="Clear Alpha")
@@ -228,32 +263,13 @@ classlist.append(DMR_PT_3DViewVertexColors_Layers)
 
 # =============================================================================
 
-def SyncEditModeEditValueToColor(self, context):
-    context.scene.editmodecolor[:3] = [context.scene.editmodevalue]*3;
-
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
     
-    bpy.types.Scene.editmodecolor = bpy.props.FloatVectorProperty(
-        name="Paint Color", subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", size=4, min=0.0, max=1.0,
-        default=(1.0, 1.0, 1.0, 1.0)
-    )
-    
-    bpy.types.Scene.editmodevalue = bpy.props.FloatProperty(
-        name="Paint Value", default=1, min=0, max=1, update=SyncEditModeEditValueToColor
-    )
-    
-    bpy.types.Scene.editmodechannels = bpy.props.BoolVectorProperty(
-        name="Paint Channels", size=4, default=(True, True, True, True)
-    )
-    
-    bpy.types.Scene.vc_palette_display_width = bpy.props.IntProperty(
-        name="Colors Per Row", default=1, min=1, max=4
-    )
-    
-    bpy.types.Scene.vc_palette_display_count = bpy.props.IntProperty(
-        name="Color Count", default=16, min=1, max=32
+    bpy.types.Scene.edit_mode_color_settings = bpy.props.PointerProperty(
+        name="Edit Mode Vertex Color Settings",
+        type=DMR_EditModeColorSettings
     )
     
     bpy.types.Mesh.vc_palette_index = bpy.props.EnumProperty(

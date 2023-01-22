@@ -11,6 +11,8 @@ def GetActiveVCLayer(mesh, render_layer=False):
             return [lyr for lyr in mesh.vertex_colors if lyr.active_render][0]
         return mesh.vertex_colors.active
 
+# ----------------------------------------------------------------------------------
+
 def GetTargetLoops(mesh, use_vertices=False):
     targetpolys = [poly for poly in mesh.polygons if poly.select]
     targetloops = []
@@ -32,6 +34,8 @@ def GetTargetLoops(mesh, use_vertices=False):
     
     return targetloops
 
+# ----------------------------------------------------------------------------------
+
 def PickColorFromObject(obj, use_render_layer=False):
     mesh = obj.data
     
@@ -44,49 +48,26 @@ def PickColorFromObject(obj, use_render_layer=False):
     # Blender 3.2
     if bpy.app.version >= (3, 2, 2):
         targetloops = GetTargetLoops(mesh) if vclayer.domain not in ['POINT', 'EDGE'] else tuple([v for v in mesh.vertices if v.select])
-        
-        if len(targetloops) == 0:
-            return None
-        else:
-            netcolor = [0.0, 0.0, 0.0, 0.0]
-            netcount = len(targetloops)
-            
-            for l in targetloops:
-                color = vcolors[l.index].color
-                netcolor[0] += color[0]
-                netcolor[1] += color[1]
-                netcolor[2] += color[2]
-                netcolor[3] += color[3]
-            
-            netcolor[0] /= netcount
-            netcolor[1] /= netcount
-            netcolor[2] /= netcount
-            netcolor[3] /= netcount
     # < 3.2
     else:
         targetloops = GetTargetLoops(mesh, False)
+    
+    if len(targetloops) == 0:
+        return None
+    else:
+        netcolor = mathutils.Vector((0,0,0,0))
+        netcount = len(targetloops)
         
-        if len(targetloops) == 0:
-            return None
-        else:
-            netcolor = [0.0, 0.0, 0.0, 0.0]
-            netcount = len(targetloops)
-            
-            for l in targetloops:
-                color = vcolors[l.index].color
-                netcolor[0] += color[0]
-                netcolor[1] += color[1]
-                netcolor[2] += color[2]
-                netcolor[3] += color[3]
-            
-            netcolor[0] /= netcount
-            netcolor[1] /= netcount
-            netcolor[2] /= netcount
-            netcolor[3] /= netcount
+        for l in targetloops:
+            netcolor += mathutils.Vector(vcolors[l.index].color)
+        
+        netcolor /= netcount
         
     return netcolor
 
-# =============================================================================
+'# =========================================================================================================================='
+'# OPERATORS'
+'# =========================================================================================================================='
 
 class DMR_OP_SelectByVertexColor(bpy.types.Operator):
     bl_label = "Select By Vertex Color"
@@ -225,8 +206,24 @@ classlist.append(DMR_OP_SelectByVertexColor)
 
 class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
     color : bpy.props.FloatVectorProperty(
-        name="Paint Color", subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", size=4, min=0.0, max=1.0,
+        name="Paint Color", 
+        subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", 
+        size=4, min=0.0, max=1.0,
         default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
+    target_color : bpy.props.FloatVectorProperty(
+        name="Target Color", 
+        description="Color to replace",
+        subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", 
+        size=4, min=0.0, max=1.0,
+        default=(.5, .5, .5, .5)
+    )
+    
+    target_color_threshold : bpy.props.FloatProperty(
+        name="Target Color Threshold",
+        description="Comparison threshold for target color",
+        default=1.0, min=0.0, max=1.0
     )
     
     mix_amount : bpy.props.FloatProperty(
@@ -235,11 +232,6 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
         soft_min=0.0,
         soft_max=1.0,
         default=1.0
-    )
-    
-    keep_alpha : bpy.props.BoolProperty(
-        name="Keep Alpha", default=False,
-        description="Prevent changing the alpha value of existing colors",
     )
     
     use_vertices : bpy.props.BoolProperty(
@@ -251,22 +243,10 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
         name="Channels", size=4, default=(True, True, True, True)
     )
     
-    def execute(self, context):
-        lastobjectmode = bpy.context.active_object.mode
-        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+    def invoke(self, context, event):
+        bpy.ops.object.mode_set(mode='OBJECT') # Update selected
         
-        amt = 1.0-self.mix_amount
-        
-        targetcolor = mathutils.Vector(self.color)
-        vectorsize = 3 if self.keep_alpha else 4
-        
-        channels = tuple(self.channels)
-        
-        for obj in [x for x in context.selected_objects] + [context.object]:
-            if obj.type != 'MESH': 
-                continue
-            
-            mesh = obj.data
+        for mesh in [obj.data for obj in [x for x in context.selected_objects]+[context.object] if obj.type == 'MESH']:
             # Create color layer if not found
             if bpy.app.version >= (3, 2, 2):
                 if not mesh.color_attributes:
@@ -276,20 +256,70 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
                     mesh.vertex_colors.new()
             
             vcolors = GetActiveVCLayer(mesh).data
+            selectedpolys = [p for p in mesh.polygons if p.select]
+            if selectedpolys:
+                self.target_color = vcolors[selectedpolys[0].loop_indices[0]].color
+                break
+            else:
+                selectedvertexindices = [v.index for v in mesh.vertices if v.select]
+                selectedloops = [l for vi in selectedvertexindices for l in mesh.loops if l.vertex_index == vi]
+                if selectedloops:
+                    self.target_color = vcolors[selectedloops[0].index].color
+                    break
             
-            targetpolys = [poly for poly in mesh.polygons if poly.select]
+        bpy.ops.object.mode_set(mode='EDIT') # Update selected
+        
+        return self.execute(context)
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        c = layout.column()
+        
+        cc = c.column(align=1)
+        cc.prop(self, 'color')
+        cc.prop(self, 'mix_amount')
+        
+        cc = c.column(align=1)
+        cc.prop(self, 'target_color')
+        cc.prop(self, 'target_color_threshold')
+        
+        r = c.row(align=1)
+        r.prop(self, 'channels', text="R", index=0)
+        r.prop(self, 'channels', text="G", index=1)
+        r.prop(self, 'channels', text="B", index=2)
+        r.prop(self, 'channels', text="A", index=3)
+        
+        c.prop(self, 'use_vertices')
+    
+    def execute(self, context):
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        amt = 1.0-self.mix_amount
+        
+        newcolor = mathutils.Vector(self.color)
+        channels = tuple(self.channels)
+        
+        targetcolor = mathutils.Vector(self.target_color)
+        targetthresh = self.target_color_threshold * 4.0
+        
+        for mesh in [obj.data for obj in [x for x in context.selected_objects]+[context.object] if obj.type == 'MESH']:
+            vcolors = GetActiveVCLayer(mesh).data
             targetloops = GetTargetLoops(mesh, self.use_vertices)
             
             # Set colors
             for l in targetloops:
-                colorelement = vcolors[l.index]
-                precolor = colorelement.color
-                outcolor = targetcolor.lerp(precolor, amt)
+                vcelement = vcolors[l.index]
+                precolor = mathutils.Vector(vcelement.color)
                 
-                vcolors[l.index].color[0] = outcolor[0] if channels[0] else precolor[0]
-                vcolors[l.index].color[1] = outcolor[1] if channels[1] else precolor[1]
-                vcolors[l.index].color[2] = outcolor[2] if channels[2] else precolor[2]
-                vcolors[l.index].color[3] = outcolor[3] if channels[3] else precolor[3]
+                if (targetcolor-precolor).length <= targetthresh:
+                    outcolor = newcolor.lerp(precolor, amt)
+                    
+                    vcelement.color[0] = outcolor[0] if channels[0] else precolor[0]
+                    vcelement.color[1] = outcolor[1] if channels[1] else precolor[1]
+                    vcelement.color[2] = outcolor[2] if channels[2] else precolor[2]
+                    vcelement.color[3] = outcolor[3] if channels[3] else precolor[3]
             
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
@@ -450,7 +480,8 @@ class DMR_OP_PickVertexColor(bpy.types.Operator):
         newcolor = PickColorFromObject(context.active_object, self.use_render_layer)
         
         if newcolor != None:
-            bpy.context.scene.editmodecolor = newcolor
+            context.scene.edit_mode_color_settings.paint_color = newcolor
+            
         else:
             self.report({'WARNING'}, 'No loops selected')
         
@@ -515,7 +546,7 @@ class DMR_OP_SetEditModeVCColor(bpy.types.Operator):
     )
     
     def execute(self, context):
-        bpy.context.scene.editmodecolor = self.color
+        context.scene.edit_mode_color_settings.paint_color = self.color
         return {'FINISHED'}
 classlist.append(DMR_OP_SetEditModeVCColor)
 
@@ -671,7 +702,7 @@ class DMR_OP_VertexColorMove(bpy.types.Operator):
     
     def execute(self, context):
         object = context.object
-        vclayers = context.object.data.vertex_colors
+        vclayers = object.data.color_attributes if bpy.app.version >= (3,2,2) else object.data.vertex_colors
         
         if not vclayers:
             self.report({'WARNING'}, 'No vertex color data found')
@@ -680,12 +711,17 @@ class DMR_OP_VertexColorMove(bpy.types.Operator):
         lastmode = object.mode
         bpy.ops.object.mode_set(mode='OBJECT')
         
-        GetLyrData = lambda x: {i: tuple(vc.color[:]) for i, vc in enumerate(x.data)}
+        if bpy.app.version >= (3,2,2):
+            vcactive = vclayers.active_color
+            vcname = vcactive.name
+            vcindex = [x for x in vclayers].index(vcactive)
+            vcrendername = vclayers[vclayers.render_color_index].name
+        else:
+            vcactive = vclayers.active
+            vcname = vcactive.name
+            vcindex = [x for x in vclayers].index(vcactive)
+            vcrendername = vclayers.active_color.name
         
-        vcactive = vclayers.active
-        vcname = vcactive.name
-        vcindex = [x for x in vclayers].index(vcactive)
-        vcrendername = [x for x in vclayers if x.active_render][0].name
         prenames = [x.name for x in vclayers]
         postnames = prenames[:]
         
@@ -712,21 +748,31 @@ class DMR_OP_VertexColorMove(bpy.types.Operator):
         
         # Different name order from start
         if not isequal:
-            vcdatadict = {vclyr.name: GetLyrData(vclyr) for vclyr in vclayers}
+            vcdatadict = {lyr.name: tuple([tuple(vc.color) for vc in lyr.data]) for lyr in vclayers}
+            
+            if bpy.app.version >= (3,2,2):
+                vctype = {lyr.name: lyr.data_type for lyr in vclayers}
+                vcdomain = {lyr.name: lyr.domain for lyr in vclayers}
             
             for i in range(0, len(vclayers)):
                 vclayers.remove(vclayers[0])
             
-            for n in postnames:
-                data = vcdatadict[n]
-                for i, vc in enumerate(vclayers.new(name=n).data):
+            for name in postnames:
+                data = vcdatadict[name]
+                lyr = vclayers.new(name=name, type=vctype[name], domain=vcdomain[name]) if bpy.app.version >= (3,2,2) else vclayers.new(name=name)
+                print(name)
+                for i, vc in enumerate(lyr.data):
                     vc.color = data[i]
             
-            for vclyr in vclayers:
-                if vclyr.name == vcrendername:
-                    vclyr.active_render = True
-                    break
-            vclayers.active = vclayers[vcname]
+            if bpy.app.version >= (3,2,2):
+                vclayers.render_color_index = list(vclayers.keys()).index(vcrendername)
+                vclayers.active_color = vclayers[vcname]
+            else:
+                for vclyr in vclayers:
+                    if vclyr.name == vcrendername:
+                        vclyr.active_render = True
+                        break
+                vclayers.active = vclayers[vcname]
         
         bpy.ops.object.mode_set(mode=lastmode)
             
@@ -782,11 +828,39 @@ class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_VertexColorGammaCorrect)
 
-# =============================================================================
+'# =========================================================================================================================='
+'# PROPERTY GROUP'
+'# =========================================================================================================================='
+
+class DMR_VertexColorAll(bpy.types.PropertyGroup):
+    lyr0 : bpy.props.StringProperty()
+    lyr1 : bpy.props.StringProperty()
+    lyr2 : bpy.props.StringProperty()
+    lyr3 : bpy.props.StringProperty()
+    lyr4 : bpy.props.StringProperty()
+    lyr5 : bpy.props.StringProperty()
+    lyr6 : bpy.props.StringProperty()
+    lyr7 : bpy.props.StringProperty()
+    
+    color0 : bpy.props.FloatVectorProperty(size=4)
+    color1 : bpy.props.FloatVectorProperty(size=4)
+    color2 : bpy.props.FloatVectorProperty(size=4)
+    color3 : bpy.props.FloatVectorProperty(size=4)
+    color4 : bpy.props.FloatVectorProperty(size=4)
+    color5 : bpy.props.FloatVectorProperty(size=4)
+    color6 : bpy.props.FloatVectorProperty(size=4)
+    color7 : bpy.props.FloatVectorProperty(size=4)
+classlist.append(DMR_VertexColorAll)
+
+'# =========================================================================================================================='
+'# REGISTER'
+'# =========================================================================================================================='
 
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
+    
+    bpy.types.Scene.editmodecolor_all = bpy.props.PointerProperty(type=DMR_VertexColorAll)
 
 def unregister():
     for c in reversed(classlist):
