@@ -334,6 +334,42 @@ classlist.append(DMR_OP_NewVGroupForSelected)
 
 # =============================================================================
 
+class DMR_OP_QuickDataTransfer(bpy.types.Operator):
+    bl_label = "Quick Data Transfer"
+    bl_idname = 'dmr.quick_data_transfer'
+    bl_description = 'Adds Data Transfer Modifier to selected objects with active as target'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    vertex_groups : bpy.props.BoolProperty(name="Vertex Groups", default=True)
+    vertex_colors : bpy.props.BoolProperty(name="Vertex Colors", default=False)
+    uvs : bpy.props.BoolProperty(name="UVs", default=False)
+    
+    max_distance : bpy.props.FloatProperty(name="Max Distance", default=0)
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=200)
+    
+    def execute(self, context):
+        active = context.active_object
+        
+        for obj in [obj for obj in context.selected_objects if obj != active]:
+            m = obj.modifiers.new(name="Quick Data Transfer", type='DATA_TRANSFER')
+            m.object = active
+            
+            if self.vertex_groups:
+                m.use_vert_data = True
+                m.data_types_verts = {'VGROUP_WEIGHTS'}
+                m.vert_mapping = 'POLYINTERP_NEAREST'
+            
+            if self.max_distance > 0.0:
+                m.use_max_distance = True
+                m.max_distance = self.max_distance
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_QuickDataTransfer)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
