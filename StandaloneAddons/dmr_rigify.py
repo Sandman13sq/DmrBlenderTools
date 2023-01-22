@@ -40,7 +40,106 @@ def GetColorIcon(color):
 
 classlist = []
 
-# ======================================================================================
+'# ================================================================================'
+'# PROPERTY GROUPS'
+'# ================================================================================'
+
+class DMR_Rigify_PropertyPin_Def(bpy.types.PropertyGroup):
+    bone : bpy.props.StringProperty(name="Bone")
+    prop : bpy.props.StringProperty(name="Property")
+classlist.append(DMR_Rigify_PropertyPin_Def)
+
+# ----------------------------------------------------------------------------
+
+class DMR_Rigify_PropertyPin_Master(bpy.types.PropertyGroup):
+    armature_object : bpy.props.PointerProperty(type=bpy.types.Object)
+    
+    size : bpy.props.IntProperty()
+    items : bpy.props.CollectionProperty(type=DMR_Rigify_PropertyPin_Def)
+    itemindex : bpy.props.IntProperty()
+    
+    update_mutex : bpy.props.BoolProperty(default=False)
+    
+    op_add_item : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
+    op_remove_item : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
+    op_move_up : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
+    op_move_down : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
+    
+    def GetActive(self):
+        return self.items[self.itemindex] if self.size > 0 else None
+    
+    def GetItem(self, index):
+        return self.items[index] if self.size else None 
+    
+    def FindItem(self, name):
+        return ([x for x in self.items if x.name == name]+[None])[0]
+    
+    def Add(self):
+        item = self.items.add()
+        self.size = len(self.items)
+        return item
+    
+    def RemoveAt(self, index):
+        if len(self.items) > 0:
+            self.items.remove(index)
+            self.size = len(self.items)
+            
+            self.itemindex = max(min(self.itemindex, self.size-1), 0)
+    
+    def MoveItem(self, index, move_down=True):
+        newindex = index + (1 if move_down else -1)
+        self.items.move(index, newindex)
+    
+    def Update(self, context):
+        # Add
+        if self.op_add_item:
+            self.op_add_item = False
+            self.Add()
+            self.itemindex = self.size-1
+        
+        # Remove
+        if self.op_remove_item:
+            self.op_remove_item = False
+            self.RemoveAt(self.itemindex)
+        
+        # Move
+        if self.op_move_down:
+            self.op_move_down = False
+            self.items.move(self.itemindex, self.itemindex+1)
+            self.itemindex = max(min(self.itemindex+1, self.size-1), 0)
+        
+        if self.op_move_up:
+            self.op_move_up = False
+            self.items.move(self.itemindex, self.itemindex-1)
+            self.itemindex = max(min(self.itemindex-1, self.size-1), 0)
+classlist.append(DMR_Rigify_PropertyPin_Master)
+
+# ----------------------------------------------------------------------------
+
+class DMR_UL_Rigify_PropertyPin_List(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        c = layout.column(align=1)
+        
+        r = c.row(align=1)
+        
+        pbones = data.armature_object.pose.bones
+        if item.bone and item.prop and item.bone in pbones.keys() and item.prop in pbones[item.bone].keys():
+            r.prop_search(item, 'bone', data.armature_object.pose, 'bones', text="")
+            r.prop(pbones[item.bone], '["%s"]' % item.prop)
+        else:
+            r.prop_search(item, 'bone', data.armature_object.pose, 'bones', text="")
+            r.prop(item, 'prop', text="")
+        
+        rr = r.column(align=1)
+        rr.scale_y = 0.5
+        rr.prop(active_data, 'op_move_up', text="", index=index, icon_only=True, icon='TRIA_UP')
+        rr.prop(active_data, 'op_move_down', text="", index=index, icon_only=True, icon='TRIA_DOWN')
+        r.row().prop(active_data, 'op_remove_item', text="", index=index, icon_only=True, icon='REMOVE')
+classlist.append(DMR_UL_Rigify_PropertyPin_List)
+
+'# ================================================================================'
+'# OPERATORS'
+'# ================================================================================'
 
 class DMR_OT_Rigify_FindLayerInfo(bpy.types.Operator):
     bl_idname = "dmr.rigify_find_layer_info"
@@ -196,7 +295,7 @@ classlist.append(DMR_OT_ArmatureSetBoneLayerIndex)
 # ---------------------------------------------------------------------------------
 
 class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
-    bl_idname = "dmr.rigify_mete_move_row"
+    bl_idname = "dmr.rigify_meta_move_row"
     bl_label = "Move Rigify Row"
     
     row : bpy.props.IntProperty(name="Row")
@@ -313,6 +412,41 @@ classlist.append(DMR_PT_Rigify_Pose)
 
 # ---------------------------------------------------------------------------------
 
+class DMR_PT_Rigify_Pose_BoneProperties(bpy.types.Panel):
+    bl_label = "Rigify Bone Properties"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Item" # Name of sidebar
+    bl_parent_id = 'DMR_PT_Rigify_Pose'
+    
+    def draw(self, context):
+        layout = self.layout
+        outrig = context.object
+        
+        if not outrig.data.get('rigify_layer_data', None):
+            layout.operator('dmr.rigify_find_layer_info')
+            return
+        
+        # Property Pins
+        if outrig.mode != 'EDIT':
+            proppins = outrig.data.rigify_prop_pin
+            
+            if proppins.armature_object:
+                r = layout.row()
+                c = r.column(align=1)
+                c.template_list(
+                    "DMR_UL_Rigify_PropertyPin_List", "", 
+                    proppins, "items", 
+                    proppins, "itemindex", 
+                    rows=3)
+                
+                c = r.column(align=1)
+                c.prop(proppins, 'op_add_item', text="", icon='ADD')
+                c.prop(proppins, 'op_remove_item', text="", icon='REMOVE')
+classlist.append(DMR_PT_Rigify_Pose_BoneProperties)
+
+# ---------------------------------------------------------------------------------
+
 class RigifyPanelSuper(bpy.types.Panel):
     bl_label = "Rigify Bone"
     bl_space_type = 'VIEW_3D'
@@ -400,10 +534,10 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
             
             cc = rr.column(align=1)
             cc.scale_y = 0.5
-            op = cc.operator('dmr.rigify_mete_move_row', text='', icon='TRIA_UP')
+            op = cc.operator('dmr.rigify_meta_move_row', text='', icon='TRIA_UP')
             op.row = lyrdata.row
             op.direction = 'UP'
-            op = cc.operator('dmr.rigify_mete_move_row', text='', icon='TRIA_DOWN')
+            op = cc.operator('dmr.rigify_meta_move_row', text='', icon='TRIA_DOWN')
             op.row = lyrdata.row
             op.direction = 'DOWN'
 classlist.append(DMR_PT_Rigify_Meta)
@@ -419,12 +553,15 @@ class DMR_PT_Rigify_Meta_Bone(RigifyPanelSuper, bpy.types.Panel):
             bpy.types.BONE_PT_rigify_buttons.draw(self, context)
 classlist.append(DMR_PT_Rigify_Meta_Bone)
 
-
-# =============================================================================
+'# ================================================================================'
+'# REGISTER'
+'# ================================================================================'
 
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
+    
+    bpy.types.Armature.rigify_prop_pin = bpy.props.PointerProperty(type=DMR_Rigify_PropertyPin_Master)
 
 def unregister():
     for c in reversed(classlist):
