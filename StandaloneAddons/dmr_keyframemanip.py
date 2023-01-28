@@ -788,7 +788,7 @@ def register():
 def unregister():
     bpy.types.VIEW3D_MT_pose_context_menu.remove(keymanip_menu)
     
-    for c in reverse(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
     del bpy.types.Object.bone_chains
 
