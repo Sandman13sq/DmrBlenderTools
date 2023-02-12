@@ -28,8 +28,8 @@ classlist = []
 
 class RampPalette_NodeGroup(bpy.types.PropertyGroup):
     def UpdateName(self, context):
-        self.node_tree.name = self.name
-        self.compositor_tree.name = self.name
+        self.node_tree.name = self.name + " - Material"
+        self.compositor_tree.name = self.name + " - Compositor"
     
     name : bpy.props.StringProperty(name="Name", default="Ramp Palette", update=UpdateName)
     node_tree : bpy.props.PointerProperty(type=bpy.types.NodeTree)
@@ -75,7 +75,7 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             nd = NewNode(ndtree, 'ShaderNodeMath', "madd", (-800, -200))
             nd.operation = 'MULTIPLY_ADD'
             nd.inputs[1].default_value = 1/self.width
-            nd.inputs[2].default_value = 1/self.width
+            nd.inputs[2].default_value = 0.5/self.width
             
             nd = NewNode(ndtree, 'ShaderNodeMath', "add", (-400, 0))
             nd.operation = 'ADD'
@@ -411,6 +411,8 @@ class RAMPPALETTE_OP_Set_UV(RampPalette_OP):
         uv = ( (self.index + 0.5) / active.width, 0.0 )
         
         for obj in list(set(list(context.selected_objects) + [context.object])):
+            if obj.type != 'MESH':
+                continue
             if "palette" not in obj.data.uv_layers:
                 obj.data.uv_layers.new(name="palette")
             lyrdata = obj.data.uv_layers['palette'].data

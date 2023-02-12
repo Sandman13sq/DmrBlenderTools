@@ -213,44 +213,44 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
             
             vgroups = obj.vertex_groups
             
-            usedgroups = [
-                vge.group
+            usedgroupnames = [
+                vgroups[vge.group].name
                 for v in obj.data.vertices
                 for vge in v.groups if (
                     (not self.remove_zero or vge.weight > 0.0)
                 )
             ]
-            usedgroups += [vg.index for vg in vgroups if vg.lock_weight]
+            usedgroupnames += [vg.name for vg in vgroups if vg.lock_weight]
             
             for m in obj.modifiers:
                 try:
                     if m.vertex_group in vgroups.keys():
-                        usedgroups.append(vgroups[m.vertex_group].index)
+                        usedgroupnames.append(m.vertex_group)
                 except:
                     []
             
-            usedgroups = list(set(usedgroups))
+            usedgroupnames = list(set(usedgroupnames))
             if self.keep_sides:
                 basenames = [
-                    vg.name[:-4] if sum([1 for c in vg.name[-3:] if c in "0123456789"]) == 3 else vg.name
-                    for vg in vgroups
+                    name[:-4] if ( sum([1 for c in name[-3:] if c in "0123456789"]) == 3 ) else name
+                    for name in usedgroupnames
                 ]
                 
-                usedgroups += [
-                    vg2
-                    for vg1 in usedgroups if (basenames[vg1][-2] in "-._" and basenames[vg1][-1].upper() in "LR")
-                    for vg2 in usedgroups if (vg2 != vg1 and basenames[vg2][:-1] == basenames[vg1][:-1] and basenames[vg2][-1].upper() in "LR")
+                usedgroupnames += [
+                    name.replace(z+x, z+y)
+                    for name in usedgroupnames
+                    for x, y in zip("lrLR", "rlRL")
+                    for z in "-._" if z+x in name
                 ]
             
-            usedgroups = tuple(set(usedgroups))
-            unusedgroupnames = [vg.name for vg in vgroups if vg.index not in usedgroups]
+            usedgroupnames = tuple(set(usedgroupnames))
             
-            hits = [vgroups.remove(vgroups[vgname]) for vgname in unusedgroupnames]
+            hits = [vgroups.remove(vg) for vg in vgroups if vg.name not in usedgroupnames]
             
             if len(hits) == 0:
-                self.report({'INFO'}, "No Empty Groups Found")
+                self.report({'INFO'}, obj.name + ": No Empty Groups Found")
             else:
-                self.report({'INFO'}, "Found and removed %d empty group(s)" % len(hits))
+                self.report({'INFO'}, obj.name + ": Found and removed %d empty group(s)" % len(hits))
             
             bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
             

@@ -39,27 +39,38 @@ def GetTargetLoops(mesh, use_vertices=False):
 def PickColorFromObject(obj, use_render_layer=False):
     mesh = obj.data
     
-    if not mesh.vertex_colors:
+    vclayer = GetActiveVCLayer(mesh, use_render_layer)
+    
+    if not vclayer:
         return None
     
-    vclayer = GetActiveVCLayer(mesh, use_render_layer)
     vcolors = vclayer.data
+    
+    targetloops = []
+    targetverts = []
     
     # Blender 3.2
     if bpy.app.version >= (3, 2, 2):
-        targetloops = GetTargetLoops(mesh) if vclayer.domain not in ['POINT', 'EDGE'] else tuple([v for v in mesh.vertices if v.select])
+        if vclayer.domain not in ['POINT', 'EDGE']:
+            targetloops = GetTargetLoops(mesh, False)
+        else:
+            targetverts = [v.index for v in mesh.vertices if ((not v.hide) and v.select)]
+        print("Domain:", vclayer.domain)
     # < 3.2
     else:
         targetloops = GetTargetLoops(mesh, False)
     
-    if len(targetloops) == 0:
+    netcount = len(targetloops) + len(targetverts)
+    
+    if netcount == 0:
         return None
     else:
         netcolor = mathutils.Vector((0,0,0,0))
-        netcount = len(targetloops)
         
         for l in targetloops:
             netcolor += mathutils.Vector(vcolors[l.index].color)
+        for vi in targetverts:
+            netcolor += mathutils.Vector(vcolors[vi].color)
         
         netcolor /= netcount
         
@@ -305,12 +316,31 @@ class DMR_OP_SetVertexColor_Super(bpy.types.Operator):
         targetthresh = self.target_color_threshold * 4.0
         
         for mesh in [obj.data for obj in [x for x in context.selected_objects]+[context.object] if obj.type == 'MESH']:
-            vcolors = GetActiveVCLayer(mesh).data
-            targetloops = GetTargetLoops(mesh, self.use_vertices)
+            lyr = GetActiveVCLayer(mesh)
+            vcolors = lyr.data
+            
+            targetloops = []
+            targetindices = []
+            
+            if bpy.app.version >= (3,2,0) and lyr.domain in ['POINT', 'EDGE']:
+                targetindices = [v.index for v in mesh.vertices if (v.select and not v.hide)]
+            else:
+                targetloops = GetTargetLoops(mesh, self.use_vertices)
             
             # Set colors
             for l in targetloops:
                 vcelement = vcolors[l.index]
+                precolor = mathutils.Vector(vcelement.color)
+                
+                if (targetcolor-precolor).length <= targetthresh:
+                    outcolor = newcolor.lerp(precolor, amt)
+                    
+                    vcelement.color[0] = outcolor[0] if channels[0] else precolor[0]
+                    vcelement.color[1] = outcolor[1] if channels[1] else precolor[1]
+                    vcelement.color[2] = outcolor[2] if channels[2] else precolor[2]
+                    vcelement.color[3] = outcolor[3] if channels[3] else precolor[3]
+            for vi in targetindices:
+                vcelement = vcolors[vi]
                 precolor = mathutils.Vector(vcelement.color)
                 
                 if (targetcolor-precolor).length <= targetthresh:
@@ -471,11 +501,6 @@ class DMR_OP_PickVertexColor(bpy.types.Operator):
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
         
         mesh = context.active_object.data
-        
-        if not mesh.vertex_colors:
-            self.report({'WARNING'}, 'No vertex color data found')
-            bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
-            return {'FINISHED'}
         
         newcolor = PickColorFromObject(context.active_object, self.use_render_layer)
         
@@ -827,6 +852,7 @@ class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
 classlist.append(DMR_OP_VertexColorGammaCorrect)
+
 
 '# =========================================================================================================================='
 '# PROPERTY GROUP'

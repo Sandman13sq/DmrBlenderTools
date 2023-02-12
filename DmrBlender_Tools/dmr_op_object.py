@@ -213,13 +213,18 @@ class DMR_OP_SyncMeshDataLayers(bpy.types.Operator):
             active = context.object
         
         if self.colors:
-            vcname = (
-                active.data.color_attributes.active_color.name,
-                active.data.color_attributes.active.name
-            ) if bpy.app.version >= (3, 2, 2) else (
-                active.data.vertex_colors.active.name,
-                [x for x in active.data.vertex_colors if x.active_render][0].name
-            )
+            if bpy.app.version >= (3, 2, 2):
+                vclayers = active.data.color_attributes
+                vcname = (
+                    vclayers.active_color.name, 
+                    vclayers.active.name if vclayers.active else ""
+                    )
+            else:
+                vclayers = active.data.vertex_colors
+                vcname = (
+                    vclayers.active.name, 
+                    [x for x in vclayers if x.active_render][0].name
+                )
         
         if self.uvs:
             uvname = (
@@ -367,6 +372,65 @@ class DMR_OP_QuickDataTransfer(bpy.types.Operator):
         
         return {'FINISHED'}
 classlist.append(DMR_OP_QuickDataTransfer)
+
+# =============================================================================
+
+class DMR_OP_NewObjectProperty(bpy.types.Operator):
+    bl_label = "Define Object Property"
+    bl_idname = 'dmr.define_object_property'
+    bl_description = 'Adds Data Transfer Modifier to selected objects with active as target'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    prop_name : bpy.props.StringProperty(name="Property Name", default="prop")
+    prop_type : bpy.props.EnumProperty(name="Property Type", default='FLOAT', items=(
+        ('INT', 'Integer', 'Integer'),
+        ('FLOAT', 'Float', 'Float'),
+        ('INT_ARRAY', 'Int Array', 'Integer Array'),
+        ('FLOAT_ARRAY', 'Float Array', 'Float Array'),
+    ))
+    prop_size : bpy.props.IntProperty(name="Array Size", default=4)
+    
+    value_int : bpy.props.IntProperty(name="Value", default=0)
+    value_float : bpy.props.FloatProperty(name="Value", default=0)
+    value_int_array : bpy.props.IntVectorProperty(name="Value", size=32)
+    value_float_array : bpy.props.FloatVectorProperty(name="Value", size=32)
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=200)
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        c = layout.column()
+        c.prop(self, 'prop_name')
+        c.prop(self, 'prop_type')
+        
+        array_type = '_ARRAY' in self.prop_type
+        
+        r = c.row()
+        r.enabled = array_type
+        r.prop(self, 'prop_size')
+        
+        if array_type:
+            cc = c.column(align=1)
+            for i in range(0, self.prop_size):
+                cc.prop(self, 'value_' + self.prop_type.lower(), index=i)
+        else:
+            c.prop(self, 'value_' + self.prop_type.lower())
+    
+    def execute(self, context):
+        active = context.active_object
+        
+        array_type = '_ARRAY' in self.prop_type
+        value = getattr(self, 'value_' + self.prop_type.lower())
+        if array_type:
+            value = value[:self.prop_size]
+        
+        for obj in [obj for obj in context.selected_objects]:
+            obj[self.prop_name] = value
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_NewObjectProperty)
 
 # =============================================================================
 

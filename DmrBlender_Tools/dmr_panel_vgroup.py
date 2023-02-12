@@ -35,6 +35,24 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel):
         return obj and obj.type == 'MESH'
     
     def draw(self, context):
+        layout = self.layout
+classlist.append(DMR_PT_3DViewVertexGroups)
+
+# ------------------------------------------------------------------------------------------
+
+class DMR_PT_3DViewVertexGroups_Groups(bpy.types.Panel):
+    bl_label = "Group Panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Mesh" # Name of sidebar
+    bl_parent_id = 'DMR_PT_3DViewVertexGroups'
+    
+    @classmethod 
+    def poll(self, context):
+        obj = context.active_object
+        return obj and obj.type == 'MESH'
+    
+    def draw(self, context):
         obj = context.active_object
         armobj = obj.find_armature()
         
@@ -79,7 +97,8 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel):
         rr = layout.row()
         sub = rr.row(align=True)
         op = sub.operator("dmr.vertex_group_new", text="Assign")
-        op.group_name = group.name
+        if group:
+            op.group_name = group.name
         op.assign_selected = True
         op.weight = context.tool_settings.vertex_group_weight
         op.type = 'REPLACE'
@@ -122,7 +141,7 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel):
         if isediting:
             row = layout.row()
             row.operator("dmr.remove_from_selected_bones", icon='BONE_DATA', text="Remove From Bones")
-classlist.append(DMR_PT_3DViewVertexGroups)
+classlist.append(DMR_PT_3DViewVertexGroups_Groups)
 
 # ------------------------------------------------------------------------------------------
 
