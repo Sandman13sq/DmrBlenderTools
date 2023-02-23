@@ -387,6 +387,7 @@ class DMR_OP_NewObjectProperty(bpy.types.Operator):
         ('FLOAT', 'Float', 'Float'),
         ('INT_ARRAY', 'Int Array', 'Integer Array'),
         ('FLOAT_ARRAY', 'Float Array', 'Float Array'),
+        ('COLOR', 'Color', 'Color'),
     ))
     prop_size : bpy.props.IntProperty(name="Array Size", default=4)
     
@@ -394,6 +395,10 @@ class DMR_OP_NewObjectProperty(bpy.types.Operator):
     value_float : bpy.props.FloatProperty(name="Value", default=0)
     value_int_array : bpy.props.IntVectorProperty(name="Value", size=32)
     value_float_array : bpy.props.FloatVectorProperty(name="Value", size=32)
+    value_color : bpy.props.FloatVectorProperty(name="Value", size=4, subtype='COLOR', min=0, max=1)
+    
+    value_min : bpy.props.FloatProperty(name="Min Value", default=0)
+    value_max : bpy.props.FloatProperty(name="Max Value", default=1)
     
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, width=200)
@@ -411,6 +416,10 @@ class DMR_OP_NewObjectProperty(bpy.types.Operator):
         r.enabled = array_type
         r.prop(self, 'prop_size')
         
+        r = c.row()
+        r.prop(self, 'value_min')
+        r.prop(self, 'value_max')
+        
         if array_type:
             cc = c.column(align=1)
             for i in range(0, self.prop_size):
@@ -423,11 +432,17 @@ class DMR_OP_NewObjectProperty(bpy.types.Operator):
         
         array_type = '_ARRAY' in self.prop_type
         value = getattr(self, 'value_' + self.prop_type.lower())
+        
         if array_type:
             value = value[:self.prop_size]
         
         for obj in [obj for obj in context.selected_objects]:
             obj[self.prop_name] = value
+            
+            # https://blender.stackexchange.com/questions/143975/how-to-edit-a-custom-property-in-a-python-script
+            obj.id_properties_ui(self.prop_name).update(min=0, max=1)
+            if self.prop_type == 'COLOR':
+                obj.id_properties_ui(self.prop_name).update(subtype='COLOR')
         
         return {'FINISHED'}
 classlist.append(DMR_OP_NewObjectProperty)

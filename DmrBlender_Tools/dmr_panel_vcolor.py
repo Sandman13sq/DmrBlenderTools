@@ -258,7 +258,6 @@ class DMR_PT_3DViewVertexColors_Layers(bpy.types.Panel): # ---------------------
             col.separator()
             col.operator("dmr.sync_mesh_data_layers", icon='FILE_REFRESH', text="").colors=True
         
-        
 classlist.append(DMR_PT_3DViewVertexColors_Layers)
 
 # =============================================================================

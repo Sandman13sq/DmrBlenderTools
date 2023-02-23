@@ -88,59 +88,59 @@ class DMR_PT_3DViewVertexGroups_Groups(bpy.types.Panel):
         cc.separator()
         cc.menu("MESH_MT_vertex_group_context_menu", icon='DOWNARROW_HLT', text="")
         
-        if group:
+        if len(obj.vertex_groups) > 0:
             cc.separator()
             cc.operator("object.vertex_group_move", icon='TRIA_UP', text="").direction = 'UP'
             cc.operator("object.vertex_group_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
         
-        # After List
-        rr = layout.row()
-        sub = rr.row(align=True)
-        op = sub.operator("dmr.vertex_group_new", text="Assign")
-        if group:
-            op.group_name = group.name
-        op.assign_selected = True
-        op.weight = context.tool_settings.vertex_group_weight
-        op.type = 'REPLACE'
-        sub.operator("object.vertex_group_remove_from", text="Remove")
+            # After List
+            rr = layout.row()
+            sub = rr.row(align=True)
+            op = sub.operator("dmr.vertex_group_new", text="Assign")
+            if group:
+                op.group_name = group.name
+            op.assign_selected = True
+            op.weight = context.tool_settings.vertex_group_weight
+            op.type = 'REPLACE'
+            sub.operator("object.vertex_group_remove_from", text="Remove")
 
-        sub = rr.row(align=True)
-        sub.operator("object.vertex_group_select", text="Select")
-        sub.operator("object.vertex_group_deselect", text="Deselect")
-        
-        layout.prop(context.tool_settings, "vertex_group_weight", text="Weight")
-        
-        rightexists = 0
-        buttonname = 'Add Right Groups'
-        for name in obj.vertex_groups.keys():
-            if name[-2:] == '_r' or name[-2:] == '.r':
-                rightexists = 1
-                buttonname = 'Remove Right Groups'
-                break
-        sub = layout.column(align=1)
-        row = sub.row(align = 1)
-        row.operator('dmr.add_missing_right_vertex_groups', text = "Add Right")
-        row.operator('dmr.remove_right_vertex_groups', text = "Remove Right")
-        
-        row = sub.row(align = 1)
-        r = row.row(align=1)
-        op = r.operator('object.vertex_group_clean', text = "Clean")
-        op.group_select_mode = group_select_mode
-        op.limit = 0.025
-        op.keep_single = True
-        op = r.operator('object.vertex_group_limit_total', text = "Limit")
-        op.group_select_mode = group_select_mode
-        r.operator('object.vertex_group_remove_from', text="", icon='WORLD').use_all_groups = True
-        
-        r = sub.row(align=1)
-        op = r.operator('object.vertex_group_normalize_all', text = "Normalize All")
-        op.group_select_mode = group_select_mode
-        op.lock_active = False
-        r.operator('dmr.remove_unused_vertex_groups', text='Remove Empty')
-        
-        if isediting:
-            row = layout.row()
-            row.operator("dmr.remove_from_selected_bones", icon='BONE_DATA', text="Remove From Bones")
+            sub = rr.row(align=True)
+            sub.operator("object.vertex_group_select", text="Select")
+            sub.operator("object.vertex_group_deselect", text="Deselect")
+            
+            layout.prop(context.tool_settings, "vertex_group_weight", text="Weight")
+            
+            rightexists = 0
+            buttonname = 'Add Right Groups'
+            for name in obj.vertex_groups.keys():
+                if name[-2:] == '_r' or name[-2:] == '.r':
+                    rightexists = 1
+                    buttonname = 'Remove Right Groups'
+                    break
+            sub = layout.column(align=1)
+            row = sub.row(align = 1)
+            row.operator('dmr.add_missing_right_vertex_groups', text = "Add Right")
+            row.operator('dmr.remove_right_vertex_groups', text = "Remove Right")
+            
+            row = sub.row(align = 1)
+            r = row.row(align=1)
+            op = r.operator('object.vertex_group_clean', text = "Clean")
+            op.group_select_mode = group_select_mode
+            op.limit = 0.025
+            op.keep_single = True
+            op = r.operator('object.vertex_group_limit_total', text = "Limit")
+            op.group_select_mode = group_select_mode
+            r.operator('object.vertex_group_remove_from', text="", icon='WORLD').use_all_groups = True
+            
+            r = sub.row(align=1)
+            op = r.operator('object.vertex_group_normalize_all', text = "Normalize All")
+            op.group_select_mode = group_select_mode
+            op.lock_active = False
+            r.operator('dmr.remove_unused_vertex_groups', text='Remove Empty')
+            
+            if isediting:
+                row = layout.row()
+                row.operator("dmr.remove_from_selected_bones", icon='BONE_DATA', text="Remove From Bones")
 classlist.append(DMR_PT_3DViewVertexGroups_Groups)
 
 # ------------------------------------------------------------------------------------------

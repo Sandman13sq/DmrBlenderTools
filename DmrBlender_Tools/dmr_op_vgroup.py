@@ -360,16 +360,26 @@ class DMR_OP_AddMissingRightVertexGroups(bpy.types.Operator):
             
             vgroups = tuple(obj.vertex_groups)
             for vg in vgroups:
-                for suffix in lsuffixes:
-                    if suffix in vg.name:
-                        nextname = vg.name.replace(suffix, suffix[:-1]+({"l": 'r', "L": "R"}[suffix[-1]]) )
+                
+                suffixmap = {suffix: vg.name.rfind(suffix) for suffix in lsuffixes if suffix in vg.name and not sum([rs in vg.name for rs in rsuffixes])}
+                
+                if suffixmap:
+                    suffixranked = [x for x in suffixmap.items()]
+                    suffixranked.sort(key=lambda x: -x[1])
+                    
+                    suffix = suffixranked[0][0]
+                    
+                    print(suffixranked, suffix)
+                    
+                    #nextname = vg.name.replace(suffix, suffix[:-1]+({"l": 'r', "L": "R"}[suffix[-1]]) )
+                    # "rreplace()"
+                    nextname = ( suffix[:-1]+({"l": 'r', "L": "R"}[suffix[-1]]) ).join(vg.name.rsplit(suffix, 1))
+                    
+                    if nextname not in obj.vertex_groups.keys():
+                        print((vg.name, nextname))
                         
-                        if nextname not in obj.vertex_groups.keys():
-                            print((vg.name, nextname))
-                            
-                            obj.vertex_groups.new( name=nextname )
-                            hits += 1
-                        break
+                        obj.vertex_groups.new( name=nextname )
+                        hits += 1
         
         bpy.ops.object.mode_set(mode = lastmode)
         
