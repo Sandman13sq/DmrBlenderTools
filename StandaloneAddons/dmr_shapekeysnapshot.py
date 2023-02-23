@@ -27,6 +27,7 @@ classlist.append(ShapeKeySnapshotEntry)
 class ShapeKeySnapshot(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(name="Name", default='New Snapshot')
     mask_group : bpy.props.StringProperty(name="Vertex Group", default="")
+    mask_group2 : bpy.props.StringProperty(name="Vertex Group 2", default="")
     keys : bpy.props.CollectionProperty(type=ShapeKeySnapshotEntry)
     size : bpy.props.IntProperty(name="Size")
     
@@ -39,6 +40,7 @@ class ShapeKeySnapshot(bpy.types.PropertyGroup):
             k.value = k2.value
         self.vertex_group = other.mask_group
         self.mask_group = other.mask_group
+        self.mask_group2 = other.mask_group
         self.name = other.name
     
     def FromMesh(self, mesh):
@@ -325,14 +327,18 @@ classlist.append(SKSNAP_OP_Snapshot_Move)
 
 class SKSNAP_UL_ShapeKeySnapshot(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        # Extended
         if context.scene.sksnap_extend_view:
             c = layout.column(align=1)
             r = c.row().split(factor=0.3)
             r.label(text=("(%d Keys)" % len(item.keys)) if len(item.keys) > 0 else "(No Keys)")
-            r.prop_search(item, "mask_group", context.object, 'vertex_groups', text="", icon='GROUP_VERTEX')
+            rr = r.row(align=1)
+            rr.prop_search(item, "mask_group", context.object, 'vertex_groups', text="", icon='GROUP_VERTEX')
+            rr.prop_search(item, "mask_group2", context.object, 'vertex_groups', text="", icon='GROUP_VERTEX')
             r = c.row()
             r.prop(item, "name", text="", icon='RESTRICT_RENDER_OFF')
             c.separator()
+        # Compact
         else:
             r = layout.row(align=1)
             rr = r.row()
