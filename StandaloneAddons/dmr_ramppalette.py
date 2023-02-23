@@ -5,16 +5,23 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 
 RAMPPALETTESIGNATURE = "<RAMP_PALETTE>"
 
+# ----------------------------------------------------------------
+
 def NewNode(ndtree, type, label, location):
     if type[:6] == 'Shader' and ndtree.type == 'COMPOSITING':
-        type = "Compositor" + type[6:]
-    if type[:10] == 'Compositor' and ndtree.type == 'Shader':
+        if type == 'ShaderNodeTexImage':
+            type = 'CompositorNodeImage'
+        else:
+            type = "Compositor" + type[6:]
+    elif type[:10] == 'Compositor' and ndtree.type == 'SHADER':
         type = "Shader" + type[10:]
     
     nd = ndtree.nodes.new(type=type)
     nd.location = location
     nd.label, nd.name = [label]*2
     return nd
+
+# ----------------------------------------------------------------
 
 def LinkNodes(ndtree, n1, output_index, n2, input_index):
     return ndtree.links.new(
@@ -26,20 +33,45 @@ classlist = []
 
 # =====================================================================================
 
+class RampPalette_SlotColor(bpy.types.PropertyGroup):
+    def UpdateColor(self, context):
+        if self.image:
+            i = 4*(self.image.size[0] * self.xy[1] + self.xy[0])
+            self.image.pixels[i:i+4] = self.color
+            self.image.update()
+    
+    color : bpy.props.FloatVectorProperty(name="Color", size=4, default=(1,1,1,1), subtype='COLOR', update=UpdateColor, min=0, max=1)
+    xy : bpy.props.IntVectorProperty(name="Position", size=2, default=(0,0))
+    image : bpy.props.PointerProperty(name="Image", type=bpy.types.Image)
+classlist.append(RampPalette_SlotColor)
+
+# =====================================================================================
+
+class RampPalette_SlotRow(bpy.types.PropertyGroup):
+    colors : bpy.props.CollectionProperty(name="Colors", type=RampPalette_SlotColor)
+classlist.append(RampPalette_SlotRow)
+    
+# =====================================================================================
+
 class RampPalette_NodeGroup(bpy.types.PropertyGroup):
     def UpdateName(self, context):
         self.node_tree.name = self.name + " - Material"
         self.compositor_tree.name = self.name + " - Compositor"
+        if self.image:
+            self.image.name = self.name + " - Image"
     
     name : bpy.props.StringProperty(name="Name", default="Ramp Palette", update=UpdateName)
     node_tree : bpy.props.PointerProperty(type=bpy.types.NodeTree)
     compositor_tree : bpy.props.PointerProperty(type=bpy.types.NodeTree)
     collection : bpy.props.PointerProperty(type=bpy.types.Collection)
     
+    slots : bpy.props.CollectionProperty(name='Slots', type=RampPalette_SlotRow)
+    image : bpy.props.PointerProperty(name='Image', type=bpy.types.Image)
+    
     color_index : bpy.props.IntProperty(name='Active Color Index')
     ramp_index : bpy.props.IntProperty(name='Active Ramp Index', update=lambda s,c: s.UpdateRampIndex())
     width : bpy.props.IntProperty(name='Width', default=8, min=2, max=32, update=lambda s,c: s.UpdateRamps())
-    height : bpy.props.IntProperty(name='Height', default=4, min=1, max=8, update=lambda s,c: s.UpdateRamps())
+    height : bpy.props.IntProperty(name='Height', default=4, min=1, max=32, update=lambda s,c: s.UpdateRamps())
     gamma_correct : bpy.props.BoolProperty( name='Gamma Correct', update=lambda s,c: s.UpdateGamma() )
     
     def GetObjects(self):
@@ -51,10 +83,14 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         self.node_tree.nodes['gamma'].inputs[1].default_value = 2.2 if self.gamma_correct else 1.0
     
     def Init(self):
-        self.node_tree = bpy.data.node_groups.new(name=self.name + " - Material", type='ShaderNodeTree')
-        self.compositor_tree = bpy.data.node_groups.new(name=self.name + " - Compositor", type='CompositorNodeTree')
+        if not self.node_tree:
+            self.node_tree = bpy.data.node_groups.new(name=self.name + " - Material", type='ShaderNodeTree')
+        if not self.compositor_tree:
+            self.compositor_tree = bpy.data.node_groups.new(name=self.name + " - Compositor", type='CompositorNodeTree')
         
         for ndtree in [self.node_tree, self.compositor_tree]:
+            [ndtree.nodes.remove(nd) for nd in list(ndtree.nodes)[::-1]]
+            
             ndtree.inputs.new('NodeSocketFloat', "Palette Float")
             ndtree.inputs.new('NodeSocketFloat', "Palette Int")
             ndtree.outputs.new('NodeSocketColor', "Color")
@@ -85,6 +121,10 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             nd.operation = 'MODULO'
             nd.inputs[1].default_value = 1.0
             
+            nd = NewNode(ndtree, 'ShaderNodeCombineXYZ', 'combxyz', (-100, 200))
+            
+            nd = NewNode(ndtree, 'ShaderNodeTexImage', 'image', (0,200))
+            
             LinkNodes(ndtree, "input", 1, "madd", 0)
             LinkNodes(ndtree, "input", 1, "gt", 0)
             LinkNodes(ndtree, "gt", 0, "mul", 0)
@@ -95,6 +135,13 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             
             LinkNodes(ndtree, "add", 0, "modulo", 0)
             
+            LinkNodes(ndtree, "modulo", 0, "combxyz", 0)
+            LinkNodes(ndtree, 'gamma', 0, 'output', 0)
+            LinkNodes(ndtree, 'image', 0, 'gamma', 0)
+            
+            if ndtree.type != 'COMPOSITING':
+                LinkNodes(ndtree, "combxyz", 0, "image", 0)
+            
         self.UpdateRamps()
         return self
     
@@ -103,62 +150,59 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             bpy.data.node_groups.remove(self.node_tree)
         if self.compositor_tree:
             bpy.data.node_groups.remove(self.compositor_tree)
+        if self.image:
+            bpy.data.images.remove(self.image)
     
-    def AddRamp(self):
-        oldramps = self.GetColorRamps()
-        
-        if oldramps:
-            e1 = [tuple(e.color) for e in self.GetColorRamps()[self.ramp_index].elements]
-            self.height += 1
-            
-            r2 = [x for x in self.GetColorRamps() if x not in oldramps][0]
-            
-            for i in range(0, self.width):
-                r2.elements[i].color = e1[i]
-            self.ramp_index = list(self.GetColorRamps()).index(r2)
-            
-        else:
-            self.height += 1
-            self.ramp_index = 0
+    # Slot Data
+    def GetSlot(self, index):
+        return self.slots[index] if self.slots else None
     
-    def RemoveRamp(self, index):
-        self.node_tree.nodes.remove( self.GetRampNodes()[index] )
-        self.height = max(1, self.height-1)
+    def ActiveSlot(self):
+        return self.slots[self.ramp_index]
     
-    def MoveRamp(self, index, offset):
-        nd1 = self.GetRampNodes()[index]
-        nd2 = self.GetRampNodes()[(index+offset) % self.height]
+    def CopySlotIndex(self, source_index, target_index):
+        slot1 = self.slots[source_index]
+        slot2 = self.slots[target_index]
         
-        r1 = nd1.color_ramp
-        r2 = nd2.color_ramp
+        self.CopySlot(slot1, slot2)
+    
+    def CopySlot(self, source_slot, target_slot):
+        for x, e in enumerate(target_slot.colors):
+            e.color = source_slot.colors[x].color
+    
+    def AddSlot(self):
+        active = self.ActiveSlot()
+        self.height += 1
         
-        e1 = [tuple(e.color) for e in r1.elements]
-        e2 = [tuple(e.color) for e in r2.elements]
+        if active:
+            self.CopySlot(active, self.slots[-1])
+    
+    def RemoveSlot(self, index):
+        if self.height > 0:
+            ser = [[tuple(e.color) for e in s.colors] for s in self.slots]
+            
+            self.slots.remove(index)
+            self.height -= 1
+            self.DrawImage()
+            
+            for y, slot in enumerate(self.slots):
+                for x, e in enumerate(slot.colors):
+                    e.color = ser[y][x]
+    
+    def MoveSlot(self, index, offset):
+        slot1 = self.slots[index]
+        slot2 = self.slots[(index+offset) % self.height]
+        
+        e1 = [tuple(e.color) for e in slot1.colors]
+        e2 = [tuple(e.color) for e in slot2.colors]
         
         for i in range(0, self.width):
-            r1.elements[i].color = e2[i]
-            r2.elements[i].color = e1[i]
+            slot1.colors[i].color = e2[i]
+            slot2.colors[i].color = e1[i]
         
-        labels = (nd1.label, nd2.label)
-        nd1.label = labels[1]
-        nd2.label = labels[0]
-    
-    def ActiveRamp(self):
-        return self.node_tree.nodes["c%d"%ramp_index]
-    
-    def GetRampNodes(self, compositor=False):
-        nodes = [nd for nd in (self.node_tree, self.compositor_tree)[compositor].nodes if nd.type == 'VALTORGB']
-        nodes.sort(key=lambda x: x.name)
-        return nodes
-    
-    def GetColorRamps(self, compositor=False):
-        return [nd.color_ramp for nd in self.GetRampNodes(compositor)]
-    
-    def GetColorRamp(self, index):
-        return self.node_tree.nodes["c%d"%index]
-    
-    def GetActiveElements(self):
-        return [nd.color_ramp.elements[self.color_index] for nd in self.GetRampNodes()]
+        labels = (slot1.name, slot2.name)
+        slot1.name = labels[1]
+        slot2.name = labels[0]
     
     def Resize(self, width=0, height=0):
         if height > 0:
@@ -169,8 +213,8 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
     def ShiftElement(self, index, shift=1):
         i = self.color_index if index == None else index
         
-        for ramp in self.GetColorRamps():
-            elements = list(ramp.elements)
+        for slot in self.slots:
+            elements = list(slot.colors)
             e1, e2 = (elements[i], elements[(i+shift) % self.width])
             p = tuple(e1.color)
             e1.color = e2.color
@@ -179,50 +223,55 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         if index == None:
             self.color_index = (i+shift) % self.width
     
-    def UpdateRamps(self):
-        for compositor, ndtree in enumerate([self.node_tree, self.compositor_tree]):
-            ramps = self.GetRampNodes(compositor)
+    def UpdateRamps(self, context=None):
+        # Image
+        if not self.image:
+            image = bpy.data.images.new(self.name, self.width, self.height, alpha=True)
+            image.colorspace_settings.name = 'Linear'
+            image.file_format = 'PNG'
+            #image.extension = 'EXTEND'
+            image.update()
             
-            # Height
-            if len(ramps) < self.height:
-                for i in range(len(ramps), self.height):
-                    NewNode(ndtree, 'ShaderNodeValToRGB', "", (0, -10000 - i*10))
-            elif len(ramps) > self.height:
-                for nd in ramps[::-1][:len(ramps)-self.height]:
-                    ndtree.nodes.remove(nd)
+            self.image = image
+            self.node_tree.nodes['image'].image = self.image
+        
+        if self.image.size[0] != self.width or self.image.size[1] != self.height:
+            self.image.scale(self.width, self.height)
+            self.DrawImage()
+        
+        # Fix height
+        while len(self.slots) < self.height:
+            slots = self.slots.add()
+        while len(self.slots) > self.height:
+            self.slots.remove(list(self.slots)[-1])
+        
+        # Fix width
+        for y, slot in enumerate(self.slots):
+            while len(slot.colors) < self.width:
+                slot.colors.add()
+            while len(slot.colors) > self.width:
+                slot.colors.remove(list(slot.colors))
             
-            # Width
-            for i, nd in enumerate(self.GetRampNodes(compositor)):
-                ramp = nd.color_ramp
-                nd.name = 'c%d' % i
-                nd.location = (0, -i*200)
-                
-                while len(ramp.elements) < self.width:
-                    e = ramp.elements.new(1.0)
-                while len(ramp.elements) > self.width:
-                    ramp.elements.remove(ramp.elements[-1])
-                for j, e in enumerate(ramp.elements):
-                    e.position = (j+0.5)/(self.width)
-            
-            nd = ndtree.nodes['madd']
-            nd.inputs[1].default_value = 1/self.width
-            nd.inputs[2].default_value = 1/self.width
+            for x,color in enumerate(slot.colors):
+                color.xy = (x,y)
+                color.image = self.image
         
         self.color_index = max(0, min(self.width-1, self.color_index))
         self.ramp_index = max(0, min(self.height-1, self.ramp_index))
+        
+        for compositor, ndtree in enumerate([self.node_tree, self.compositor_tree]):
+            nd = ndtree.nodes['madd']
+            nd.inputs[1].default_value = 1/self.width
+            nd.inputs[2].default_value = 0.5/self.width
+            ndtree.nodes['combxyz'].inputs[1].default_value = (0.5 + self.ramp_index)/self.height
         
     def UpdateRampIndex(self):
         if self.height > 0:
             index = self.ramp_index % self.height
             if index != self.ramp_index:
                 self.ramp_index = index
-                return
-            
             for compositor, ndtree in enumerate([self.node_tree, self.compositor_tree]):
-                ramps = self.GetRampNodes(compositor)
-                LinkNodes(ndtree, 'modulo', 0, ramps[self.ramp_index], 0)
-                LinkNodes(ndtree, ramps[self.ramp_index], 0, 'gamma', 0)
-                LinkNodes(ndtree, 'gamma', 0, 'output', 0)
+                ndtree.nodes['combxyz'].inputs[1].default_value = (0.5 + self.ramp_index)/self.height
     
     def FromImage(self, image):
         self.width, self.height = image.size
@@ -248,19 +297,25 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         
         rows = rows[::-1]
         
-        for ramps in [self.GetColorRamps(0), self.GetColorRamps(1)]:
-            for ramp, row in zip(ramps, rows):
-                for i, e in enumerate(ramp.elements):
-                    e.color = row[i]
+        # Write to colors
+        for r, slot in enumerate(self.slots):
+            for c,color in enumerate(slot.colors):
+                color.color = rows[r][c]
     
     def ToImage(self, image):
         image.scale(self.width, self.height)
         image.pixels = tuple(
             x
-            for ramp in list(self.GetColorRamps())[::-1]
-            for e in ramp.elements
+            for ramp in list(self.slots)[::-1]
+            for e in ramp.colors
             for x in e.color
         )
+    
+    def DrawImage(self):
+        self.UpdateRamps()
+        for slot in self.slots:
+            for color in slot.colors:
+                color.color = color.color
     
 classlist.append(RampPalette_NodeGroup)
 
@@ -322,6 +377,17 @@ class RampPalette_OP(bpy.types.Operator):
         return 1
 
 # -------------------------------------------------------------------
+class RAMPPALETTE_OP_Palette_Init(RampPalette_OP): 
+    """Initialize palette to default"""
+    bl_idname = "ramppalette.palette_init"
+    bl_label = "Initialize Palette"
+    
+    def execute(self, context):
+        context.scene.ramp_palettes.Active().Init()
+        return {'FINISHED'}
+classlist.append(RAMPPALETTE_OP_Palette_Init)
+
+# -------------------------------------------------------------------
 class RAMPPALETTE_OP_Palette_Add(RampPalette_OP): 
     """Adds new palette to list"""
     bl_idname = "ramppalette.palette_add"
@@ -348,10 +414,10 @@ classlist.append(RAMPPALETTE_OP_Palette_Remove)
 class RAMPPALETTE_OP_Ramp_Add(RampPalette_OP): 
     """Adds new ramp to palette"""
     bl_idname = "ramppalette.ramp_add"
-    bl_label = "Add Ramp"
+    bl_label = "Add Slot"
     
     def execute(self, context):
-        context.scene.ramp_palettes.Active().AddRamp()
+        context.scene.ramp_palettes.Active().AddSlot()
         return {'FINISHED'}
 classlist.append(RAMPPALETTE_OP_Ramp_Add)
 
@@ -359,11 +425,11 @@ classlist.append(RAMPPALETTE_OP_Ramp_Add)
 class RAMPPALETTE_OP_Ramp_Remove(RampPalette_OP): 
     """Removes ramp from palette"""
     bl_idname = "ramppalette.ramp_remove"
-    bl_label = "Remove Ramp"
+    bl_label = "Remove Slot"
     index : bpy.props.IntProperty()
     
     def execute(self, context):
-        context.scene.ramp_palettes.Active().RemoveRamp(self.index)
+        context.scene.ramp_palettes.Active().RemoveSlot(self.index)
         return {'FINISHED'}
 classlist.append(RAMPPALETTE_OP_Ramp_Remove)
 
@@ -371,14 +437,25 @@ classlist.append(RAMPPALETTE_OP_Ramp_Remove)
 class RAMPPALETTE_OP_Ramp_Move(RampPalette_OP): 
     """Moves ramp"""
     bl_idname = "ramppalette.ramp_move"
-    bl_label = "Move Ramp"
+    bl_label = "Move Slot"
     index : bpy.props.IntProperty()
     offset : bpy.props.IntProperty()
     
     def execute(self, context):
-        context.scene.ramp_palettes.Active().MoveRamp(self.index, self.offset)
+        context.scene.ramp_palettes.Active().MoveSlot(self.index, self.offset)
         return {'FINISHED'}
 classlist.append(RAMPPALETTE_OP_Ramp_Move)
+
+# -------------------------------------------------------------------
+class RAMPPALETTE_OP_Ramp_DrawImage(RampPalette_OP): 
+    """Recalculates internal values and redraw images"""
+    bl_idname = "ramppalette.ramp_draw_image"
+    bl_label = "Refresh Palette"
+    
+    def execute(self, context):
+        context.scene.ramp_palettes.Active().DrawImage()
+        return {'FINISHED'}
+classlist.append(RAMPPALETTE_OP_Ramp_DrawImage)
 
 # -------------------------------------------------------------------
 class RAMPPALETTE_OP_Color_Shift(RampPalette_OP): 
@@ -400,15 +477,25 @@ class RAMPPALETTE_OP_Set_UV(RampPalette_OP):
     bl_label = "Set Palette Color"
     bl_options = {'REGISTER', 'UNDO'}
     
-    index : bpy.props.IntProperty(name="Index")
+    index : bpy.props.FloatProperty(name="Index", step=100, precision=2, min=0, max=32)
+    coordinate : bpy.props.EnumProperty(name="Coordinate", default='X', items=(
+        ('X', 'X', 'Set UV X coordinate'),
+        ('Y', 'Y', 'Set UV Y coordinate'),
+    ))
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, 'index')
+        r = layout.row()
+        r.label(text="Coordinate")
+        r.prop(self, 'coordinate', expand=True)
     
     def execute(self, context):
         mode = context.object.mode
         bpy.ops.object.mode_set(mode="OBJECT")
         
         active = context.scene.ramp_palettes.Active()
-        
-        uv = ( (self.index + 0.5) / active.width, 0.0 )
+        palvalue = (self.index + 0.5) / active.width
         
         for obj in list(set(list(context.selected_objects) + [context.object])):
             if obj.type != 'MESH':
@@ -427,8 +514,12 @@ class RAMPPALETTE_OP_Set_UV(RampPalette_OP):
             
             print(len(targetloops))
             
-            for l in tuple(targetloops):
-                lyrdata[l].uv = uv
+            if self.coordinate == 'X':
+                for l in tuple(targetloops):
+                    lyrdata[l].uv[0] = palvalue
+            else:
+                for l in tuple(targetloops):
+                    lyrdata[l].uv[1] = palvalue
         
         bpy.ops.object.mode_set(mode=mode)
         return {'FINISHED'}
@@ -648,6 +739,7 @@ class RAMPPALETTE_PT_RampPalettePanel_ActiveCharacter(bpy.types.Panel):
             rr.prop(ramppalette, 'width')
             rr.prop(ramppalette, 'height')
             r.prop(ramppalette, 'gamma_correct', text="", icon='CON_TRANSLIKE', toggle=1)
+            r.operator('ramppalette.ramp_draw_image', text="", icon='FILE_REFRESH')
             
             r = c.row()
             r.operator('ramppalette.ramp_add', icon='ADD')
@@ -655,18 +747,21 @@ class RAMPPALETTE_PT_RampPalettePanel_ActiveCharacter(bpy.types.Panel):
             # Draw Active Elements
             b = layout.box()
             
-            if master.display_mode == 'RAMP':
-                rampnodes = ramppalette.GetRampNodes()
-                activenode = rampnodes[ramppalette.ramp_index]
-                
-                c = b.column()
-                c.row().prop(master, 'display_mode', expand=True)
-                r = c.row()
-                r.prop(ramppalette, 'ramp_index', text=activenode.label)
+            c = b.column()
+            active = ramppalette.ActiveSlot()
+            
+            if active:
+                r = c.row(align=0)
+                r.prop(ramppalette, 'ramp_index', text="")
+                r = r.row(align=1)
+                r.scale_x = 2
+                r.prop(active, 'name', text="")
                 
                 bb = b.box().column(align=1)
                 
-                for i, e in enumerate(activenode.color_ramp.elements):
+                c = r.column(align=0)
+                
+                for i, e in enumerate(active.colors):
                     if (i % 8) == 0:
                         r = bb.row(align=1)
                     c = r.column(align=0)
@@ -683,23 +778,10 @@ class RAMPPALETTE_PT_RampPalettePanel_ActiveCharacter(bpy.types.Panel):
                     op = rr.operator('ramppalette.move_color', text='', icon='TRIA_RIGHT')
                     op.index = i
                     op.offset = 1
-                
-            else:
-                rampnodes = ramppalette.GetRampNodes()
-                activenode = rampnodes[ramppalette.ramp_index]
-                
-                c = b.column()
-                c.row().prop(master, 'display_mode', expand=True)
-                r = c.row()
-                elements = ramppalette.GetActiveElements()
-                
-                bb = b.box().column(align=1)
-                
-            
             
 classlist.append(RAMPPALETTE_PT_RampPalettePanel_ActiveCharacter)
 
-# -------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 
 class RAMPPALETTE_PT_RampPalettePanel_Ramps(bpy.types.Panel):
     bl_label = "Color Ramps"
@@ -716,71 +798,39 @@ class RAMPPALETTE_PT_RampPalettePanel_Ramps(bpy.types.Panel):
         
         if ramppalette:
             # Draw ramps
-            rampnodes = ramppalette.GetRampNodes()
             
-            for i, nd in enumerate(rampnodes):
+            for i, slot in enumerate(ramppalette.slots):
                 c = layout.column(align=1)
                 
-                c.prop(nd, "label", text="")
+                r = c.row(align=0)
+                rr = r.row(align=1)
+                rr.prop(slot, "name", text="")
+                
+                rr = r.row(align=1)
+                rr.operator('ramppalette.ramp_remove', text="", icon='REMOVE').index = i
+                
+                cc = rr.column(align=1)
+                cc.scale_y=0.5
+                
+                op = cc.operator('ramppalette.ramp_move', text="", icon='TRIA_UP')
+                op.index = i
+                op.offset = -1
+                op = cc.operator('ramppalette.ramp_move', text="", icon='TRIA_DOWN')
+                op.index = i
+                op.offset = 1
                 
                 cc = c.column(align=1)
                 cc.scale_y = 0.7
                 
-                rr = cc.row(align=0)
-                rr.column().template_color_ramp(nd, "color_ramp", expand=True)
-                c = rr.column(align=1)
-                c.operator('ramppalette.ramp_remove', text="", icon='REMOVE').index = i
-                op = c.operator('ramppalette.ramp_move', text="", icon='TRIA_UP')
-                op.index = i
-                op.offset = -1
-                op = c.operator('ramppalette.ramp_move', text="", icon='TRIA_DOWN')
-                op.index = i
-                op.offset = 1
-    
-classlist.append(RAMPPALETTE_PT_RampPalettePanel_Ramps)
-
-# -------------------------------------------------------------------
-
-class RAMPPALETTE_PT_RampPalettePanel_Ramps(bpy.types.Panel):
-    bl_label = "Color Ramps"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Edit" # Name of sidebar
-    bl_parent_id = 'RAMPPALETTE_PT_RampPalettePanel'
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    def draw(self, context):
-        master = context.scene.ramp_palettes
-        layout = self.layout
-        ramppalette = master.Active()
-        
-        if ramppalette:
-            # Draw ramps
-            rampnodes = ramppalette.GetRampNodes()
-            
-            for i, nd in enumerate(rampnodes):
-                c = layout.column(align=1)
+                rr = cc.row(align=1)
                 
-                c.prop(nd, "label", text="")
-                
-                cc = c.column(align=1)
-                cc.scale_y = 0.7
-                
-                rr = cc.row(align=0)
-                rr.column().template_color_ramp(nd, "color_ramp", expand=True)
-                c = rr.column(align=1)
-                c.operator('ramppalette.ramp_remove', text="", icon='REMOVE').index = i
-                op = c.operator('ramppalette.ramp_move', text="", icon='TRIA_UP')
-                op.index = i
-                op.offset = -1
-                op = c.operator('ramppalette.ramp_move', text="", icon='TRIA_DOWN')
-                op.index = i
-                op.offset = 1
+                for e in slot.colors:
+                    rr.prop(e, 'color', text="")
     
 classlist.append(RAMPPALETTE_PT_RampPalettePanel_Ramps)
 
 '# ================================================================================================================='
-'# PANELS'
+'# REGISTER'
 '# ================================================================================================================='
 
 def register():
@@ -798,3 +848,7 @@ if __name__ == "__main__":
 
 # Run on file start
 bpy.data.texts[__file__[__file__.rfind("\\")+1:]].use_module = True
+
+
+for palette in bpy.context.scene.ramp_palettes.data:
+    palette.DrawImage()
