@@ -774,7 +774,7 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
     def RemoveParams(self, index=None):
         if index == None:
             index = self.index_param
-        self.params.RemoveVisualObjects()
+        self.params[index].RemoveVisualObjects()
         self.params.remove(index)
         self.index_param = max(0, min(len(self.params)-1, self.index_param))
     
@@ -855,8 +855,8 @@ class SwingData_Swing_Bone(bpy.types.PropertyGroup): # -------------------------
         
         if swing_ultimate.show_search:
             b.prop_search(self, 'name', swing_ultimate, 'prc_labels_bonename')
-            b.prop_search(self, 'start_bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
-            b.prop_search(self, 'end_bonename', swing_ultimate, 'prc_labels_bonename', icon='BONE_DATA')
+            b.prop_search(self, 'start_bonename', swing_ultimate, 'prc_labels_swingbone', icon='BONE_DATA')
+            b.prop_search(self, 'end_bonename', swing_ultimate, 'prc_labels_swingbone', icon='BONE_DATA')
         else:
             b.prop(self, 'name')
             b.prop(self, 'start_bonename', icon='BONE_DATA')
@@ -2036,6 +2036,7 @@ class SwingSceneData(bpy.types.PropertyGroup):
     
     # Updates labels from CSV file
     def UpdateLabels(self, path):
+        print("> Parsing Labels...")
         with open(path, 'r') as csvfile:
             csvreader = csv.reader(csvfile)
             fields = next(csvreader)
@@ -2076,6 +2077,8 @@ class SwingSceneData(bpy.types.PropertyGroup):
         print("> %d Swing Names" % len(self.prc_labels_bonename))
         print("> %d Swing Bones" % len(self.prc_labels_swingbone))
         print("> %d Swing Collisions" % len(self.prc_labels_collisions))
+        
+        return True
     
     # Returns label matching or close enough to given string
     def FindClosestLabel(self, label, print_count=8):
@@ -2119,6 +2122,7 @@ class SWINGULT_OP_UpdateLabels(bpy.types.Operator, ImportHelper):
     
     def execute(self, context):
         context.scene.swing_ultimate.UpdateLabels(self.filepath)
+        self.report({'INFO'}, "Labels parsed")
         return {'FINISHED'}
 classlist.append(SWINGULT_OP_UpdateLabels)
 
@@ -2527,7 +2531,7 @@ class SWINGULT_OP_Armature_CreateParamVisuals(bpy.types.Operator):
     
     @classmethod
     def poll(self, context):
-        return context.object and context.object.type == 'ARMATURE'
+        return context.object and context.object.type == 'ARMATURE' and context.scene.swing_ultimate.GetActiveData()
     
     def invoke(self, context, event):
         prc = context.scene.swing_ultimate.GetActiveData()
@@ -2582,7 +2586,7 @@ class SWINGULT_OP_Armature_CreateShapeVisuals(bpy.types.Operator):
     
     @classmethod
     def poll(self, context):
-        return context.object and context.object.type == 'ARMATURE'
+        return context.object and context.object.type == 'ARMATURE' and context.scene.swing_ultimate.GetActiveData()
     
     def invoke(self, context, event):
         prc = context.scene.swing_ultimate.GetActiveData()
@@ -2620,7 +2624,7 @@ class SWINGULT_OP_Armature_SymmetrizeParams(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         obj = context.object
-        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone and context.scene.swing_ultimate.GetActiveData()
     
     def execute(self, context):
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -2676,7 +2680,7 @@ class SWINGULT_OP_Armature_CopyParamsToSelected(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         obj = context.object
-        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone and context.scene.swing_ultimate.GetActiveData()
     
     def execute(self, context):
         pbactive = context.active_pose_bone
@@ -2761,7 +2765,7 @@ class SWINGULT_OP_Armature_ToggleVisualObjects(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         obj = context.object
-        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone
+        return obj and obj.type == 'ARMATURE' and obj.mode == 'POSE' and context.active_pose_bone and context.scene.swing_ultimate.GetActiveData()
     
     def execute(self, context):
         visobjects = [
@@ -2809,7 +2813,7 @@ class SWINGULT_OP_Armature_IsloateSwingBoneVisibility(bpy.types.Operator):
     
     @classmethod
     def poll(self, context):
-        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
+        return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE' and context.scene.swing_ultimate.GetActiveData()
     
     def execute(self, context):
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -3021,23 +3025,24 @@ class SWINGULT_PT_PoseMode_3DView(bpy.types.Panel):
                 swing_ultimate = context.scene.swing_ultimate
                 prc = swing_ultimate.GetActiveData()
                 
-                sbone, param = prc.FindBoneParamsByName(pb.name)
-                if sbone:
-                    sbone.DrawPanel(layout)
-                    
-                    if param:
-                        layout.label(text=pb.name + " = %s.params[%d]" % (sbone.name, list(sbone.params).index(param)))
-                        r = layout.row()
-                        r.operator('swingult.create_parameter_visuals', text="Create Visuals")
+                if prc:
+                    sbone, param = prc.FindBoneParamsByName(pb.name)
+                    if sbone:
+                        sbone.DrawPanel(layout)
                         
-                        rr = r.row(align=True)
-                        rr.scale_x = 0.8
-                        if param.object_minangley:
-                            rr.prop(param.object_minangley, 'hide_viewport', invert_checkbox=True, text="Show Y")
-                        if param.object_minanglez:
-                            rr.prop(param.object_minanglez, 'hide_viewport', invert_checkbox=True, text="Show Z")
-                        
-                        param.DrawPanel(layout)
+                        if param:
+                            layout.label(text=pb.name + " = %s.params[%d]" % (sbone.name, list(sbone.params).index(param)))
+                            r = layout.row()
+                            r.operator('swingult.create_parameter_visuals', text="Create Visuals")
+                            
+                            rr = r.row(align=True)
+                            rr.scale_x = 0.8
+                            if param.object_minangley:
+                                rr.prop(param.object_minangley, 'hide_viewport', invert_checkbox=True, text="Show Y")
+                            if param.object_minanglez:
+                                rr.prop(param.object_minanglez, 'hide_viewport', invert_checkbox=True, text="Show Z")
+                            
+                            param.DrawPanel(layout)
     
     def draw(self, context):
         self.DrawLayout(context, self.layout)
