@@ -596,6 +596,8 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
         description="Save and update image on completion."
         )
     
+    uv_layer : bpy.props.StringProperty(name="UV Layer", default="")
+    
     @classmethod
     def poll(self, context):
         return context.scene.render.engine == 'CYCLES' and ObjectRenderEnabled(context.active_object)
@@ -606,15 +608,23 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
         layout.prop(self, 'save_image')
+        layout.prop_search(self, 'uv_layer', context.active_object.data, "uv_layers")
+        r = layout.row()
+        r.label(text="" if self.uv_layer != "" else "(Use Selected Layer)")
     
     def execute(self, context):
         bpy.ops.object.mode_set(mode='OBJECT')
         
         outputdefs = {x.name: x for x in context.scene.bake_tricks.bake_defs.items}
         selected = [x for x in context.selected_objects if x.type == 'MESH']
+        
         for obj in selected:
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(1)
+            
+            lastuv = obj.data.uv_layers.active
+            if self.uv_layer != "" and self.uv_layer in obj.data.uv_layers.keys():
+                obj.data.uv_layers.active = obj.data.uv_layers[self.uv_layer]
             
             material = obj.active_material
             for image in [nd.image for nd in material.node_tree.nodes if (nd.type == 'TEX_IMAGE' and nd.image)]:
@@ -625,6 +635,8 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
                         save_image=self.save_image, 
                         op=self
                         )
+            
+            obj.data.uv_layers.active = lastuv
         
         bpy.ops.object.mode_set(mode='OBJECT')
         
