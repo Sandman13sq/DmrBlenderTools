@@ -264,7 +264,8 @@ class CSplit_SplitMaster(bpy.types.PropertyGroup):
                             
                             # Write Appropriate color for "chara" file
                             elif fname[:len("chara")] == "chara" and filecolor in ['0%d' % ci for ci in cXXindices[XXindex]]:
-                                CopyFile(srcdir+fname, destdir+fname)
+                                if last4chars[1:] in ['_0%d' % ci for ci in cXXindices[XXindex] if ci in cindices]:
+                                    CopyFile(srcdir+fname, destdir+fname)
                                 normalfile = False
                                 break
                             
