@@ -2520,6 +2520,37 @@ classlist.append(SWINGULT_OP_SwingData_GenerateCollisionGroups)
 "# ========================================================================================================="
 
 # ----------------------------------------------------------------------------------------
+class SWINGULT_OP_Armature_RenameArmatureBone(bpy.types.Operator): 
+    bl_idname = "swingult.rename_armature_bone"
+    bl_label = "Rename to Swing Bone"
+    bl_description = "Rename active armature bone to swing bone using labels"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    bonename : bpy.props.StringProperty(name="Bone Name")
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'ARMATURE' and context.scene.swing_ultimate.prc_labels_swingbone
+    
+    def invoke(self, context, event):
+        labels = context.scene.swing_ultimate.prc_labels_swingbone
+        
+        if not labels:
+            self.report({'WARNING'}, "No labels loaded. Load the ParamLabels.csv file first")
+            return {'FINISHED'}
+        
+        return context.window_manager.invoke_props_dialog(self, width=400)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'bonename', context.scene.swing_ultimate, 'prc_labels_swingbone')
+    
+    def execute(self, context):
+        context.object.data.bones.active.name = self.bonename
+        return {'FINISHED'}
+classlist.append(SWINGULT_OP_Armature_RenameArmatureBone)
+
+# ----------------------------------------------------------------------------------------
 class SWINGULT_OP_Armature_CreateParamVisuals(bpy.types.Operator): 
     bl_idname = "swingult.create_parameter_visuals"
     bl_label = "Create Swing Bone Parameter Visuals"
@@ -3006,6 +3037,9 @@ class SWINGULT_PT_PoseMode_3DView(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def DrawLayout(self, context, layout):
+        c = layout.column()
+        c.operator('swingult.rename_armature_bone')
+        
         c = layout.column()
         c.operator('swingult.create_shape_visuals', icon='PHYSICS', text="Create Shape Visuals")
         
