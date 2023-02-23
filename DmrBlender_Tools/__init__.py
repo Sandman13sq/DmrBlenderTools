@@ -34,6 +34,7 @@ modulesNames = [
     'dmr_panel_shapekey',
     'dmr_panel_vcolor',
     'dmr_panel_vgroup',
+    'dmr_panel_uv',
     'dmr_panel_action',
 ]
 
