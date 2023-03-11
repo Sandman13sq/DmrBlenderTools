@@ -2,6 +2,7 @@
     If your vertex colors are coming out black in the baked texture, 
     check that you have the correct UV layer that you want to bake to selected
     AND that your vertex color node in your material is set with a name (Not left empty).
+    If your desired output node engine target is 'ALL', but you have 'CYCLES' set somewhere on another, the 'CYCLES' node *may* take priority on bake.
 """
 
 bl_info = {
@@ -114,9 +115,6 @@ def ImageFrom4(
         else:
             targetimage = output_image
         
-        if not targetimage.has_data:
-            print("Material \"%s\" Image \"%s\" has no data" % (material.name, targetimage.name))
-        
         # Bake to temp images --------------------------------------------------------------------------
         bakeimages = []
         
@@ -150,7 +148,11 @@ def ImageFrom4(
             
             if output:
                 print('> "%s", type \'%s\'' % (name, types[channelindex]))
+                
+                lasttargettype = output.target
+                
                 output.is_active_output = True
+                output.target = 'CYCLES'
                 
                 # Bake Setup
                 context.scene.cycles.samples = samples[channelindex]
@@ -167,6 +169,8 @@ def ImageFrom4(
                 bpy.ops.object.bake(type=types[channelindex])
                 
                 keyedimage[bakekey] = bakeimage
+                
+                output.target = lasttargettype
             else:
                 bakeimages.append(None)
                 print('> Output node "%s" not found' % (name))
