@@ -70,9 +70,17 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
     
     color_index : bpy.props.IntProperty(name='Active Color Index')
     ramp_index : bpy.props.IntProperty(name='Active Ramp Index', update=lambda s,c: s.UpdateRampIndex())
-    width : bpy.props.IntProperty(name='Width', default=8, min=2, max=32, update=lambda s,c: s.UpdateRamps())
-    height : bpy.props.IntProperty(name='Height', default=4, min=1, max=32, update=lambda s,c: s.UpdateRamps())
+    width : bpy.props.IntProperty(name='Width', default=8, min=2, max=32, update=lambda s,c: s.DrawImage())
+    height : bpy.props.IntProperty(name='Height', default=4, min=1, max=32, update=lambda s,c: s.DrawImage())
     gamma_correct : bpy.props.BoolProperty( name='Gamma Correct', update=lambda s,c: s.UpdateGamma() )
+    
+    def CopyFromOther(self, other):
+        self.width = other.width
+        self.height = other.height
+        
+        for y,slot in enumerate(other.slots):
+            for x,color in enumerate(slot):
+                self.slots[y].colors[x].color = color
     
     def GetObjects(self):
         if self.collection:
@@ -158,7 +166,7 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         return self.slots[index] if self.slots else None
     
     def ActiveSlot(self):
-        return self.slots[self.ramp_index]
+        return self.slots[self.ramp_index] if self.slots else None
     
     def CopySlotIndex(self, source_index, target_index):
         slot1 = self.slots[source_index]
@@ -224,6 +232,13 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             self.color_index = (i+shift) % self.width
     
     def UpdateRamps(self, context=None):
+        if self.slots:
+            lastwidth = len(self.slots[0].colors)
+            lastheight = len(self.slots)
+        else:
+            lastwidth = 0
+            lastheight = 0
+        
         # Image
         if not self.image:
             image = bpy.data.images.new(self.name, self.width, self.height, alpha=True)
@@ -250,7 +265,7 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             while len(slot.colors) < self.width:
                 slot.colors.add()
             while len(slot.colors) > self.width:
-                slot.colors.remove(list(slot.colors))
+                slot.colors.remove(len(slot.colors)-1)
             
             for x,color in enumerate(slot.colors):
                 color.xy = (x,y)
@@ -265,6 +280,34 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             nd.inputs[2].default_value = 0.5/self.width
             ndtree.nodes['combxyz'].inputs[1].default_value = (0.5 + self.ramp_index)/self.height
         
+        # Resize UVS
+        if self.collection and (lastwidth > 0 and lastheight > 0) and (lastwidth != self.width or lastheight != self.height):
+            xdiv = float(lastwidth) / float(self.width)
+            ydiv = float(lastheight) / float(self.height)
+            
+            for obj in self.collection.all_objects:
+                if obj.type != 'MESH':
+                    continue
+                if 'palette' not in obj.data.uv_layers.keys():
+                    continue
+                
+                uvlyr = obj.data.uv_layers['palette']
+                
+                if not uvlyr.data:
+                    continue
+                
+                lastuv = tuple(uvlyr.data[0].uv)
+                
+                break
+                
+                for uv in uvlyr.data:
+                    uv.uv = (
+                        (uv.uv[0] * xdiv),
+                        (uv.uv[1] * ydiv)
+                    )
+                print(obj.name, lastuv, tuple(uvlyr.data[0].uv))
+            print(((lastwidth, lastheight), (self.width, self.height)))
+        
     def UpdateRampIndex(self):
         if self.height > 0:
             index = self.ramp_index % self.height
@@ -274,7 +317,8 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
                 ndtree.nodes['combxyz'].inputs[1].default_value = (0.5 + self.ramp_index)/self.height
     
     def FromImage(self, image):
-        self.width, self.height = image.size
+        self.width = image.size[0]
+        self.height = image.size[1]
         n = self.width * self.height
         
         pixels = tuple(image.pixels)
@@ -289,13 +333,12 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         
         rows = [
             [
-                list(mathutils.Color(color[:3]).from_srgb_to_scene_linear())+[color[3]]
+                #list(mathutils.Color(color[:3]).from_srgb_to_scene_linear())+[color[3]]
+                list(mathutils.Color(color[:3]))+[color[3]]
                 for color in r
             ]
             for r in rows
         ]
-        
-        rows = rows[::-1]
         
         # Write to colors
         for r, slot in enumerate(self.slots):
@@ -311,8 +354,9 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             for x in e.color
         )
     
-    def DrawImage(self):
-        self.UpdateRamps()
+    def DrawImage(self, do_update=True):
+        if do_update:
+            self.UpdateRamps()
         for slot in self.slots:
             for color in slot.colors:
                 color.color = color.color
@@ -593,6 +637,36 @@ class RAMPPALETTE_OP_MoveColor(RampPalette_OP):
 classlist.append(RAMPPALETTE_OP_MoveColor)
 
 # ----------------------------------------------------------------------------------
+class RAMPPALETTE_OP_FromImage(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "ramppalette.from_image"
+    bl_label = "Import Palette From Image"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    image : bpy.props.StringProperty(name="Image")
+    
+    @classmethod
+    def poll(self, context):
+        return context.scene.ramp_palettes.Active()
+        
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        c = layout.column()
+        c.prop_search(self, 'image', bpy.data, 'images')
+    
+    def execute(self, context):
+        image = bpy.data.images[self.image]
+        context.scene.ramp_palettes.Active().FromImage(image)
+        self.report({'INFO'}, 'Palette read from "%s"' % image.name)
+        
+        return {'FINISHED'}
+classlist.append(RAMPPALETTE_OP_FromImage)
+
+# ----------------------------------------------------------------------------------
 class RAMPPALETTE_OP_Import(bpy.types.Operator, ImportHelper):
     """Tooltip"""
     bl_idname = "ramppalette.import"
@@ -731,6 +805,7 @@ class RAMPPALETTE_PT_RampPalettePanel_ActiveCharacter(bpy.types.Panel):
             c = b.column()
             
             r = c.row()
+            r.operator('ramppalette.from_image', text="From Image")
             r.operator('ramppalette.import', text="Import Image")
             r.operator('ramppalette.export', text="Export Image")
             
