@@ -209,6 +209,101 @@ classlist.append(DMR_OP_CopyUVLayerLoops)
 
 # ---------------------------------------------------------------------------
 
+class DMR_OP_UVLayerMove(bpy.types.Operator):
+    bl_idname = "dmr.uv_layer_move"
+    bl_label = "Move UV Layer Data"
+    bl_description = "Moves UV layer up or down on list"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    direction : bpy.props.EnumProperty(
+        name="Direction",
+        description='Direction to move layer',
+        items=(
+            ('UP', 'Up', 'Move UV layer up'),
+            ('DOWN', 'Down', 'Move UV layer down'),
+            ('TOP', 'Top', 'Move UV layer to top of list'),
+            ('BOTTOM', 'Bottom', 'Move UV layer to bottom of list'),
+        )
+    )
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'MESH'
+    
+    def execute(self, context):
+        object = context.object
+        layers = object.data.uv_layers
+        
+        if not layers:
+            self.report({'WARNING'}, 'No UV layers found')
+            return {'FINISHED'}
+        
+        lastmode = object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        prenames = [x.name for x in layers]
+        postnames = prenames[:]
+        
+        for lyrindex, lyr in enumerate(layers):
+            if lyr.active:
+                activelyrname = lyr.name
+                activelyrindex = lyrindex
+        
+        # Sort Names
+        if self.direction == 'UP' and activelyrindex != 0:
+            postnames = [x.name for x in layers if x.name != activelyrname]
+            postnames.insert(activelyrindex-1, activelyrname)
+        elif self.direction == 'DOWN' and activelyrindex != len(layers)-1:
+            postnames = [x.name for x in layers if x.name != activelyrname]
+            postnames.insert(activelyrindex+1, activelyrname)
+        elif self.direction == 'TOP' and activelyrindex != 0:
+            postnames = [x.name for x in layers if x.name != activelyrname]
+            postnames.insert(0, activelyrname)
+        elif self.direction == 'BOTTOM' and activelyrindex != len(layers)-1:
+            postnames = [x.name for x in layers if x.name != activelyrname]
+            postnames.insert(len(layers), activelyrname)
+        
+        # Check if changes were made
+        isequal = True
+        for n1, n2 in zip(prenames, postnames):
+            if n1 != n2:
+                isequal = False
+                break
+        
+        # Different name order from start
+        if not isequal:
+            lyrdatadict = {
+                lyr.name: [
+                    (tuple(e.uv), e.pin_uv, e.select, e.select_edge)
+                    for e in lyr.data
+                ]
+                for lyr in layers
+            }
+            
+            for lyrindex, name in enumerate(postnames):
+                newdata = lyrdatadict[name]
+                lyr = layers[lyrindex]
+                
+                for i, uv in enumerate(lyr.data):
+                    uv.uv = newdata[i][0]
+                    uv.pin_uv = newdata[i][1]
+                    uv.select = newdata[i][2]
+                    uv.select_edge = newdata[i][3]
+            
+            for lyr in layers:
+                lyr.name = "__" + lyr.name
+            for i, lyr in enumerate(layers):
+                lyr.name = postnames[i]
+            
+            layers.active = layers[activelyrname]
+        
+        bpy.ops.object.mode_set(mode=lastmode)
+            
+        return {'FINISHED'}
+bpy.utils.register_class(DMR_OP_UVLayerMove)
+
+# ---------------------------------------------------------------------------
+
 class DMR_OP_StackUVIslands(bpy.types.Operator):
     """Stacks UV Islands"""
     bl_idname = "dmr.stack_uv_islands"
