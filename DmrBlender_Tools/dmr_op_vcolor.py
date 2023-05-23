@@ -11,6 +11,19 @@ def GetActiveVCLayer(mesh, render_layer=False):
             return [lyr for lyr in mesh.vertex_colors if lyr.active_render][0]
         return mesh.vertex_colors.active
 
+def GetVCLayer(mesh, lyrname=""):
+    if not lyrname or lyrname == "":
+        return GetActiveVCLayer(mesh, True)
+    
+    layers = [lyr for lyr in mesh.color_attributes]
+    
+    lyrname = lyrname.lower()
+    
+    for lyr in layers:
+        if lyrname == lyr.lower():
+            return lyr
+    return None
+
 # ----------------------------------------------------------------------------------
 
 def GetTargetLoops(mesh, use_vertices=False):
@@ -76,6 +89,33 @@ def PickColorFromObject(obj, use_render_layer=False):
         
     return netcolor
 
+# ----------------------------------------------------------------------------------
+
+def PickNetFromObject(obj):
+    mesh = obj.data
+    settings = bpy.context.scene.edit_mode_color_settings
+    netpick = settings.net_pick_colors
+    
+    netpick.clear()
+    
+    verts = tuple(mesh.vertices)
+    polys = tuple(mesh.polygons)
+    loops = tuple(mesh.loops)
+    
+    targetpolys = [p for p in polys if (p.hide and p.select)]
+    usedverts = [vi for p in targetpolys for vi in p.vertices]
+    targetloops = [l for p in polys if p in targetpolys for l in p.loop_indices]
+    targetloops += [l.index for l in loops if (l.vertex_index not in usedverts and verts[l.vertex_index].select and not verts[l.vertex_index].hide)]
+    
+    print("{0} Loops selected".format(len(targetloops)))
+    
+    for lyr in mesh.color_attributes:
+        lyrdata = lyrdata
+        item = netpick.add()
+        
+        item.layer = lyr.name
+        item.color = sum( [mathutils.Vector(vc.color) for vc in targetloops] )
+    
 '# =========================================================================================================================='
 '# OPERATORS'
 '# =========================================================================================================================='
@@ -500,13 +540,10 @@ class DMR_OP_PickVertexColor(bpy.types.Operator):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
         
-        mesh = context.active_object.data
-        
         newcolor = PickColorFromObject(context.active_object, self.use_render_layer)
         
         if newcolor != None:
             context.scene.edit_mode_color_settings.paint_color = newcolor
-            
         else:
             self.report({'WARNING'}, 'No loops selected')
         
@@ -853,31 +890,92 @@ class DMR_OP_VertexColorGammaCorrect(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OP_VertexColorGammaCorrect)
 
+# =============================================================================
 
-'# =========================================================================================================================='
-'# PROPERTY GROUP'
-'# =========================================================================================================================='
-
-class DMR_VertexColorAll(bpy.types.PropertyGroup):
-    lyr0 : bpy.props.StringProperty()
-    lyr1 : bpy.props.StringProperty()
-    lyr2 : bpy.props.StringProperty()
-    lyr3 : bpy.props.StringProperty()
-    lyr4 : bpy.props.StringProperty()
-    lyr5 : bpy.props.StringProperty()
-    lyr6 : bpy.props.StringProperty()
-    lyr7 : bpy.props.StringProperty()
+class DMR_OP_PickVertexColorAll(bpy.types.Operator):
+    bl_label = "Pick All Layer Colors"
+    bl_idname = 'dmr.pick_vc_all'
+    bl_description = 'Stores colors of selected loops for all layers of active object'
+    bl_options = {'REGISTER', 'UNDO'}
     
-    color0 : bpy.props.FloatVectorProperty(size=4)
-    color1 : bpy.props.FloatVectorProperty(size=4)
-    color2 : bpy.props.FloatVectorProperty(size=4)
-    color3 : bpy.props.FloatVectorProperty(size=4)
-    color4 : bpy.props.FloatVectorProperty(size=4)
-    color5 : bpy.props.FloatVectorProperty(size=4)
-    color6 : bpy.props.FloatVectorProperty(size=4)
-    color7 : bpy.props.FloatVectorProperty(size=4)
-classlist.append(DMR_VertexColorAll)
+    def execute(self, context):
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        obj = context.active_object
+        mesh = obj.data
+        settings = bpy.context.scene.edit_mode_color_settings
+        netpick = settings.net_pick_colors
+        
+        verts = tuple(mesh.vertices)
+        polys = tuple(mesh.polygons)
+        loops = tuple(mesh.loops)
+        
+        targetpolys = [p for p in polys if (p.hide and p.select)]
+        usedverts = [vi for p in targetpolys for vi in p.vertices]
+        targetloops = [l for p in polys if p in targetpolys for l in p.loop_indices]
+        targetloops += [l.index for l in loops if (l.vertex_index not in usedverts and verts[l.vertex_index].select and not verts[l.vertex_index].hide)]
+        
+        if len(targetloops) == 0:
+            self.report({'WARNING'}, 'No loops selected')
+        else:
+            print("{0} Loops selected".format(len(targetloops)))
+            
+            netpick.clear()
+            
+            for lyr in mesh.color_attributes:
+                item = netpick.add()
+                item.layer = lyr.name
+                netcolor = mathutils.Vector((0,0,0,0))
+                for l in targetloops:
+                    netcolor += mathutils.Vector(lyr.data[l].color)
+                item.color = netcolor / len(targetloops)
+        
+        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+        return {'FINISHED'}
+classlist.append(DMR_OP_PickVertexColorAll)
 
+# =============================================================================
+
+class DMR_OP_PaintVertexColorAll(bpy.types.Operator):
+    bl_label = "Paint All Layer Colors"
+    bl_idname = 'dmr.paint_vc_all'
+    bl_description = 'Paints colors of selected loops with stored pick colors by layer name'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        lastobjectmode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
+        
+        obj = context.active_object
+        mesh = obj.data
+        settings = bpy.context.scene.edit_mode_color_settings
+        netpick = settings.net_pick_colors
+        
+        verts = tuple(mesh.vertices)
+        polys = tuple(mesh.polygons)
+        loops = tuple(mesh.loops)
+        
+        targetpolys = [p for p in polys if (p.hide and p.select)]
+        usedverts = [vi for p in targetpolys for vi in p.vertices]
+        targetloops = [l for p in polys if p in targetpolys for l in p.loop_indices]
+        targetloops += [l.index for l in loops if (l.vertex_index not in usedverts and verts[l.vertex_index].select and not verts[l.vertex_index].hide)]
+        
+        if len(targetloops) == 0:
+            self.report({'WARNING'}, 'No loops selected')
+        else:
+            print("{0} Loops selected".format(len(targetloops)))
+            
+            for pick in netpick:
+                if pick.layer in mesh.color_attributes.keys():
+                    lyr = mesh.color_attributes[pick.layer]
+                    
+                    for l in targetloops:
+                        lyr.data[l].color = pick.color
+        
+        bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+        return {'FINISHED'}
+classlist.append(DMR_OP_PaintVertexColorAll)
 '# =========================================================================================================================='
 '# REGISTER'
 '# =========================================================================================================================='
@@ -885,8 +983,6 @@ classlist.append(DMR_VertexColorAll)
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
-    
-    bpy.types.Scene.editmodecolor_all = bpy.props.PointerProperty(type=DMR_VertexColorAll)
 
 def unregister():
     for c in classlist[::-1]:

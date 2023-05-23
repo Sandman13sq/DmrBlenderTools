@@ -2,9 +2,28 @@ import bpy
 
 classlist = []
 
+'# =========================================================================================================================='
+'# PROPERTY GROUP'
+'# =========================================================================================================================='
+
+class DMR_VCNetColor_Entry(bpy.types.PropertyGroup):
+    layer : bpy.props.StringProperty(name="Layer")
+    color : bpy.props.FloatVectorProperty(
+        name="Color", 
+        subtype="COLOR_GAMMA" if bpy.app.version < (3, 2, 2) else "COLOR", 
+        size=4, min=0.0, max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0)
+    )
+    
+classlist.append(DMR_VCNetColor_Entry)
+
+# ---------------------------------------------------------------------------
+
 class DMR_EditModeColorSettings(bpy.types.PropertyGroup):
     def SyncEditModeEditValueToColor(self, context):
         context.scene.edit_mode_color_settings.paint_color[:3] = [context.scene.edit_mode_color_settings.paint_value]*3;
+    
+    net_pick_colors : bpy.props.CollectionProperty(name="Net Pick Colors", type=DMR_VCNetColor_Entry)
     
     paint_color : bpy.props.FloatVectorProperty(
         name="Paint Color", 
@@ -36,13 +55,15 @@ class DMR_EditModeColorSettings(bpy.types.PropertyGroup):
     )
 classlist.append(DMR_EditModeColorSettings)
 
-# =============================================================================
+'# =========================================================================================================================='
+'# PANELS'
+'# =========================================================================================================================='
 
 class DMR_PT_3DViewVertexColors(bpy.types.Panel): # ------------------------------
     bl_label = "Vertex Colors"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod 
@@ -232,33 +253,80 @@ class DMR_PT_3DViewVertexColors_Layers(bpy.types.Panel): # ---------------------
         
         layout = self.layout
         row = layout.row(align=0)
-        col = row.column()
+        column = row.column()
         
         if bpy.app.version >= (3, 2, 2):
-            col.template_list("MESH_UL_color_attributes", "color_attributes", mesh, "color_attributes", mesh.color_attributes, "active_color_index", rows=3)
+            column.template_list("MESH_UL_color_attributes", "color_attributes", mesh, "color_attributes", mesh.color_attributes, "active_color_index", rows=3)
             
-            col = row.column(align=1)
-            col.operator("geometry.color_attribute_add", icon='ADD', text="")
-            col.operator("geometry.color_attribute_remove", icon='REMOVE', text="")
-            col.separator()
-            col.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
-            col.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
-            col.separator()
-            col.operator("dmr.sync_mesh_data_layers", icon='FILE_REFRESH', text="")
+            layers = mesh.color_attributes
+            names = [x.name for x in layers]
+            col = ( (1,1,1,1), (0,0.7,1,0.1), (1,1,1,1) )
+            
+            c = row.column(align=1)
+            op = c.operator("geometry.color_attribute_add", icon='ADD', text="")
+            op.name = "Col" if "Col" not in names else "PRM" if "PRM" not in names else "Col2"
+            op.domain = 'CORNER'
+            op.data_type = 'BYTE_COLOR'
+            op.color = col[0] if "Col" not in names else col[1] if "PRM" not in names else col[2]
+            
+            c.operator("geometry.color_attribute_remove", icon='REMOVE', text="")
+            c.separator()
+            c.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
+            c.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+            c.separator()
+            c.operator("dmr.sync_mesh_data_layers", icon='FILE_REFRESH', text="")
         else:
-            col.template_list("MESH_UL_vcols", "vcols", mesh, "vertex_colors", mesh.vertex_colors, "active_index", rows=2)
+            column.template_list("MESH_UL_vcols", "vcols", mesh, "vertex_colors", mesh.vertex_colors, "active_index", rows=2)
             
-            col = row.column(align=1)
-            col.separator()
-            col.operator("mesh.vertex_color_add", icon='ADD', text="")
-            col.operator("mesh.vertex_color_remove", icon='REMOVE', text="")
-            col.separator()
-            col.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
-            col.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
-            col.separator()
-            col.operator("dmr.sync_mesh_data_layers", icon='FILE_REFRESH', text="").colors=True
+            c = row.column(align=1)
+            c.separator()
+            c.operator("mesh.vertex_color_add", icon='ADD', text="")
+            c.operator("mesh.vertex_color_remove", icon='REMOVE', text="")
+            c.separator()
+            c.operator("dmr.vertex_color_move", icon='TRIA_UP', text="").direction = 'UP'
+            c.operator("dmr.vertex_color_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+            c.separator()
+            c.operator("dmr.sync_mesh_data_layers", icon='FILE_REFRESH', text="").colors=True
         
 classlist.append(DMR_PT_3DViewVertexColors_Layers)
+
+# =============================================================================
+
+class DMR_PT_3DViewVertexColors_NetPick(bpy.types.Panel): # ------------------------------
+    bl_label = "Pick All Colors"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_parent_id = 'DMR_PT_3DViewVertexColors'
+    
+    @classmethod 
+    def poll(self, context):
+        active = context.active_object
+        if active:
+            if active.type == 'MESH':
+                return active.mode in {'EDIT', 'VERTEX_PAINT', 'OBJECT'}
+        return None
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        netpick = context.scene.edit_mode_color_settings.net_pick_colors
+        
+        r = layout.row()
+        r.operator('dmr.paint_vc_all', icon='BRUSH_DATA', text="Paint All")
+        r.operator('dmr.pick_vc_all', icon='EYEDROPPER', text="Pick All")
+        
+        c = layout.column(align=1)
+        
+        if len(netpick) == 0:
+            c.label(text="No Colors Picked")
+        else:
+            for pick in netpick:
+                r = c.box().row()
+                r.label(text=pick.layer)
+                r.prop(pick, 'color', text="")
+        
+classlist.append(DMR_PT_3DViewVertexColors_NetPick)
 
 # =============================================================================
 
