@@ -204,6 +204,8 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
         layout.prop(self, "keep_sides")
     
     def execute(self, context):
+        nethits = 0
+        
         for obj in context.selected_objects:
             if obj.type != 'MESH':
                 continue
@@ -212,6 +214,9 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
             bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
             
             vgroups = obj.vertex_groups
+            
+            if not vgroups:
+                continue
             
             usedgroupnames = [
                 vgroups[vge.group].name
@@ -222,13 +227,19 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
             ]
             usedgroupnames += [vg.name for vg in vgroups if vg.lock_weight]
             
+            # Check Modifiers
             for m in obj.modifiers:
-                try:
-                    if m.vertex_group in vgroups.keys():
+                if m.type == 'DATA_TRANSFER':
+                    if m.object:
+                        usedgroupnames += [vg.name for vg in m.object.vertex_groups]
                         usedgroupnames.append(m.vertex_group)
-                except:
-                    []
+                else:
+                    try:
+                        usedgroupnames.append(m.vertex_group)
+                    except:
+                        []
             
+            # Keep Sides
             usedgroupnames = list(set(usedgroupnames))
             if self.keep_sides:
                 basenames = [
@@ -243,16 +254,22 @@ class DMR_OP_RemoveUnusedVertexGroups(bpy.types.Operator):
                     for z in "-._" if z+x in name
                 ]
             
+            # Remove
+            
             usedgroupnames = tuple(set(usedgroupnames))
             
-            hits = [vgroups.remove(vg) for vg in vgroups if vg.name not in usedgroupnames]
+            hits = len([vgroups.remove(vg) for vg in vgroups if (vg.name not in usedgroupnames)])
+            nethits += hits
             
-            if len(hits) == 0:
-                self.report({'INFO'}, obj.name + ": No Empty Groups Found")
-            else:
-                self.report({'INFO'}, obj.name + ": Found and removed %d empty group(s)" % len(hits))
+            if hits > 0:
+                print(obj.name + ": Found and removed %d empty group(s)" % (hits))
             
             bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
+        
+        if (nethits) == 0:
+            self.report({'INFO'}, "No Empty Groups Found")
+        else:
+            self.report({'INFO'}, "Found and removed %d empty group(s) total" % nethits)
             
         return {'FINISHED'}
 classlist.append(DMR_OP_RemoveUnusedVertexGroups)
