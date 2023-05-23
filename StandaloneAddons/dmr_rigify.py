@@ -34,9 +34,14 @@ def GetColorIcon(color):
             dist = d
             outicon = icon
             outname = name
-            #print([d, icon, name])
-    
+            
     return outicon
+
+def IsRigifyArmature(obj):
+    return obj and obj.type == 'ARMATURE' and not obj.data.rigify_layers
+
+def IsRigifyMeta(obj):
+    return obj and obj.type == 'ARMATURE' and obj.data.rigify_layers
 
 classlist = []
 
@@ -45,8 +50,12 @@ classlist = []
 '# ================================================================================'
 
 class DMR_Rigify_PropertyPin_Def(bpy.types.PropertyGroup):
-    bone : bpy.props.StringProperty(name="Bone")
+    name : bpy.props.StringProperty(name="Bone")
     prop : bpy.props.StringProperty(name="Property")
+    
+    def CopyFromOther(self, other):
+        self.name = other.name
+        self.prop = other.prop
 classlist.append(DMR_Rigify_PropertyPin_Def)
 
 # ----------------------------------------------------------------------------
@@ -64,6 +73,13 @@ class DMR_Rigify_PropertyPin_Master(bpy.types.PropertyGroup):
     op_remove_item : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
     op_move_up : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
     op_move_down : bpy.props.BoolProperty(default=False, update=lambda s,c: s.Update(c))
+    
+    def CopyFromOther(self, other, clear=True):
+        if clear:
+            [self.RemoveAt(len(self.items)-1) for x in self.items]
+        
+        for otheritem in other.items:
+            self.Add().CopyFromOther(otheritem)
     
     def GetActive(self):
         return self.items[self.itemindex] if self.size > 0 else None
@@ -122,12 +138,14 @@ class DMR_UL_Rigify_PropertyPin_List(bpy.types.UIList):
         
         r = c.row(align=1)
         
+        bonename = item.name
+        
         pbones = data.armature_object.pose.bones
-        if item.bone and item.prop and item.bone in pbones.keys() and item.prop in pbones[item.bone].keys():
-            r.prop_search(item, 'bone', data.armature_object.pose, 'bones', text="")
-            r.prop(pbones[item.bone], '["%s"]' % item.prop)
+        if bonename and item.prop and bonename in pbones.keys() and item.prop in pbones[bonename].keys():
+            r.prop_search(item, 'name', data.armature_object.pose, 'bones', text="")
+            r.prop(pbones[item.name], '["%s"]' % item.prop)
         else:
-            r.prop_search(item, 'bone', data.armature_object.pose, 'bones', text="")
+            r.prop_search(item, 'name', data.armature_object.pose, 'bones', text="")
             r.prop(item, 'prop', text="")
         
         rr = r.column(align=1)
@@ -275,7 +293,7 @@ classlist.append(DMR_OT_ArmatureSetBoneLayer)
 # ---------------------------------------------------------------------------------
 
 class DMR_OT_ArmatureSetBoneLayerIndex(bpy.types.Operator):
-    bl_idname = "dmr.armature_layer_assign_index"
+    bl_idname = "dmr.armature_layer_set_index"
     bl_label = "Set Bone Layer Index"
     bl_options = {'REGISTER', 'UNDO'}
     
@@ -291,6 +309,31 @@ class DMR_OT_ArmatureSetBoneLayerIndex(bpy.types.Operator):
                 b.layers = [x==self.layer for x in range(0, 32)]
         return {'FINISHED'}
 classlist.append(DMR_OT_ArmatureSetBoneLayerIndex)
+
+# ---------------------------------------------------------------------------------
+
+class DMR_OT_ArmatureToggleBoneLayerIndex(bpy.types.Operator):
+    bl_idname = "dmr.armature_layer_toggle_index"
+    bl_label = "Set Bone Layer Index"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    layer : bpy.props.IntProperty(name='Layer Index', min=0, max=31)
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == 'ARMATURE'
+
+    def execute(self, context):
+        bones = context.object.data.bones if context.object.mode != 'EDIT' else context.object.data.edit_bones
+        bones = [b for b in bones if b.select]
+        value = sum([x for b in bones for i,x in enumerate(b.layers) if i == self.layer]) == 0
+        
+        print("value=", value)
+        for b in bones:
+            b.layers = [value if (i==self.layer) else x for i,x in enumerate(b.layers)]
+            print(b.name, "".join(["X" if x else "O" for x in b.layers]))
+        return {'FINISHED'}
+classlist.append(DMR_OT_ArmatureToggleBoneLayerIndex)
 
 # ---------------------------------------------------------------------------------
 
@@ -323,6 +366,140 @@ class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(DMR_OT_MoveRigifyLayerRow)
 
+# ---------------------------------------------------------------------------------
+
+class DMR_OT_RigifyTransferBoneProperties(bpy.types.Operator):
+    bl_label = "Move Rigify Row"
+    bl_idname = "dmr.rigify_transfer_bone_properties"
+    
+    source : bpy.props.EnumProperty(name='Source Rig', items=lambda s,c: [
+        (x.name, x.name, x.name) for x in bpy.data.objects if (IsRigifyArmature(x) and x.data.rigify_prop_pin.items)
+        ])
+    
+    target : bpy.props.EnumProperty(name='Target Rig', items=lambda s,c: [
+        (x.name, x.name, x.name) for x in bpy.data.objects if (IsRigifyArmature(x))
+        ])
+    
+    prop : bpy.props.StringProperty(name="Prop")
+    
+    def invoke(self, context, event):
+        if IsRigifyArmature(context.object):
+            self.target = context.object.name
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, 'source')
+        layout.prop(self, 'target')
+        layout.prop_search(self, 'prop', bpy.data.objects[self.source].data.rigify_prop_pin, 'items')
+    
+    def execute(self, context):
+        source = bpy.data.objects[self.source].data.rigify_prop_pin
+        target = bpy.data.objects[self.target].data.rigify_prop_pin
+        
+        if self.prop == "":
+            target.CopyFromOther(source)
+            
+            self.report({'INFO'}, "Copied prop pins to rig")
+        else:
+            target.Add().CopyFromOther(source.FindItem(self.prop))
+            self.report({'INFO'}, "Copied prop pin to rig")
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_RigifyTransferBoneProperties)
+
+# ---------------------------------------------------------------------------------
+
+class DMR_OT_QuickPoseBoneConstraint(bpy.types.Operator):
+    bl_label = "Quick Pose Bone Constraint"
+    bl_idname = "dmr.quick_pose_bone_constraint"
+    
+    target : bpy.props.StringProperty(name="Target")
+    target_bone : bpy.props.StringProperty(name="Target Bone")
+    type : bpy.props.EnumProperty(name="Constraint Type", items=(
+        ('CHILD_OF', "Child Of", "Child Of"),
+        #('TRACK_TO', "Track To", "Track To")
+    ))
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and IsRigifyArmature(context.object)
+    
+    def invoke(self, context, event):
+        if IsRigifyArmature(context.object):
+            self.target = context.object.name
+            if "DEF-hip" in context.object.pose.bones.keys():
+                self.target_bone = "DEF-hip"
+            elif "DEF-spine" in context.object.pose.bones.keys():
+                self.target_bone = "DEF-spine"
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.object
+        c = layout.column()
+        
+        c.prop(self, 'type')
+        c.prop_search(self, 'target', bpy.data, 'objects')
+        
+        if self.target in bpy.data.objects.keys():
+            obj = bpy.data.objects[self.target]
+            if obj.type == 'ARMATURE':
+                c.prop_search(self, 'target_bone', obj.pose, 'bones')
+    
+    def execute(self, context):
+        obj = context.object
+        for pb in obj.pose.bones:
+            if pb.bone.select:
+                c = pb.constraints.new(type=self.type)
+                c.name += " - Bake"
+                
+                if self.type == 'CHILD_OF':
+                    c.target = bpy.data.objects[self.target]
+                    c.subtarget = self.target_bone
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_QuickPoseBoneConstraint)
+
+# ---------------------------------------------------------------------------------
+
+class DMR_OT_RigifyMetaSetFKTweakLayers(bpy.types.Operator):
+    bl_label = "Auto Set FK Tweak Layers"
+    bl_idname = "dmr.rigify_meta_auto_sub_layers"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        return IsRigifyMeta(context.object) and context.object.mode == 'POSE'
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        for pb in context.object.pose.bones:
+            if pb.bone.select:
+                print(pb.name)
+                pblayers = pb.bone.layers
+                lyrindex = 0
+                for i,x in enumerate(pblayers):
+                    if x:
+                        lyrindex = i
+                        break
+                
+                
+                pb.rigify_parameters.fk_layers = tuple([x==(lyrindex+1) for x in range(0, 32)])
+                pb.rigify_parameters.tweak_layers = tuple([x==(lyrindex+2) for x in range(0, 32)])
+                
+                print(list(pb.rigify_parameters.fk_layers))
+                print(list(pb.rigify_parameters.tweak_layers))
+        
+        bpy.ops.object.mode_set(mode='POSE')
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_RigifyMetaSetFKTweakLayers)
+
+# ---------------------------------------------------------------------------------
+
+
 '# ================================================================================'
 '# PANELS'
 '# ================================================================================'
@@ -335,8 +512,7 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
     
     @classmethod
     def poll(self, context):
-        obj = context.object
-        return obj and obj.type == 'ARMATURE' and not obj.data.rigify_layers
+        return IsRigifyArmature(context.object)
     
     def draw(self, context):
         layout = self.layout
@@ -359,10 +535,12 @@ class DMR_PT_Rigify_Pose(bpy.types.Panel):
         
         r = layout.row()
         indices = tuple([layers.index(x) for x in layers if x[0]])
+        
         allon = outrig.data.layers[indices[0]]
-        togglelayers = tuple([((x in indices and not allon)) or (x==28) for x in range(0, 32)])
+        allcontrol = tuple([((not allon) or (x==28)) and x < 28 for x in range(0, 32)])
+        togglelayers = tuple([((not allon) or (x==28)) and x <= 28 for x in range(0, 32)])
         r.operator('dmr.armature_layer_visibility', text='All On' if not allon else 'All Off').layers = togglelayers
-        r.operator('dmr.armature_layer_visibility', text='Deform').layers = tuple(x==29 for x in range(0, 32))
+        r.operator('dmr.armature_layer_visibility', text='Deform').layers = tuple([x==29 for x in range(0, 32)])
         
         # Draw Layer Toggles
         rc = layout.row(align=1)
@@ -439,10 +617,14 @@ class DMR_PT_Rigify_Pose_BoneProperties(bpy.types.Panel):
                     proppins, "items", 
                     proppins, "itemindex", 
                     rows=3)
-                
+              
                 c = r.column(align=1)
                 c.prop(proppins, 'op_add_item', text="", icon='ADD')
                 c.prop(proppins, 'op_remove_item', text="", icon='REMOVE')
+                
+                c.separator()
+                
+                c.operator('dmr.rigify_transfer_bone_properties', text="", icon='PASTEDOWN')
 classlist.append(DMR_PT_Rigify_Pose_BoneProperties)
 
 # ---------------------------------------------------------------------------------
@@ -463,8 +645,7 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
     
     @classmethod
     def poll(self, context):
-        obj = context.object
-        return obj and obj.type == 'ARMATURE' and obj.data.rigify_layers
+        return IsRigifyMeta(context.object)
     
     def draw(self, context):
         layout = self.layout
@@ -473,13 +654,17 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
         rigifylayers = list(metarig.data.rigify_layers)
         
         allon = metarig.data.layers[0]
-        layout.operator('dmr.armature_layer_visibility', text='All On' if not allon else 'All Off').layers = tuple([not allon or (x==28) for x in range(0, 32)])
+        
+        r = layout.row()
+        r.operator('dmr.armature_layer_visibility', text='All On' if not allon else 'All Off').layers = tuple([not allon or (x==28) for x in range(0, 32)])
+        r.prop(context.scene, 'rigify_meta_layer_mode')
         
         # Draw Layer Toggles
         c = layout.column(align=1)
         lastrow = -1
         
         selectedlayers = [1]*32
+        bonelayerindices = []
         layernamemap = {i: x.name if x.name else "<Unused>" for i,x in enumerate(rigifylayers)}
         usedlayers = [x for x in layernamemap.values() if x != "<Unused>"]
         layerindexmap = {i: usedlayers.index(x) if x != "<Unused>" else -1 for i,x in enumerate(layernamemap.values())}
@@ -499,14 +684,18 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
                 if b.bone.select:
                     for i, l in enumerate(b.bone.layers):
                         selectedlayers[i] |= l
+                        if l:
+                            bonelayerindices.append(i)
         
         sortedlayers = rigifylayers[:-1]
         sortedlayers.sort(key=lambda x: x.row)
         sortedlayers.append(rigifylayers[-1])
         
+        #editlayers = context.scene.rigify_meta_layer_mode;
+        
         # Layers
         for i, lyrdata in enumerate(sortedlayers):
-            if not lyrdata.name:
+            if lyrdata.name == "":
                 continue
             
             lyrindex = rigifylayers.index(lyrdata)
@@ -522,15 +711,20 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
                 rowcount = 0
             
             rr = r.row(align=1)
-            rr.scale_x = 0.9
+            rr.scale_x = 0.8
             
             # Operators
             rrr = rr.row(align=1)
             rrr.active = selectedlayers[lyrindex]
-            rrr.prop(metarig.data, 'layers', index=lyrindex, text=str(lyrindex) + ": " + lyrdata.name, toggle=1)
-            #rrr.prop(metarig.data, 'layers', index=i, text=str(i), toggle=1)
+            
+            boolname = str(lyrindex) + ": " + lyrdata.name
+            
+            rrr.prop(metarig.data, 'layers', index=lyrindex, text=boolname, toggle=1)
+            
+            rr.operator('dmr.armature_layer_toggle_index', text="", icon='CHECKBOX_HLT' if (lyrindex in bonelayerindices) else 'CHECKBOX_DEHLT').layer = lyrindex
+            
             rr.operator('dmr.armature_layer_visibility', text='', icon='VIEWZOOM').layers = [x==lyrindex for x in range(0, 32)]
-            rr.operator('dmr.armature_layer_assign_index', text='', icon='GREASEPENCIL').layer = lyrindex
+            ##rr.operator('dmr.armature_layer_assign_index', text='', icon='GREASEPENCIL').layer = lyrindex
             
             cc = rr.column(align=1)
             cc.scale_y = 0.5
@@ -562,9 +756,10 @@ def register():
         bpy.utils.register_class(c)
     
     bpy.types.Armature.rigify_prop_pin = bpy.props.PointerProperty(type=DMR_Rigify_PropertyPin_Master)
+    bpy.types.Scene.rigify_meta_layer_mode = bpy.props.BoolProperty(name="Edit Bone Layers", default=False)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

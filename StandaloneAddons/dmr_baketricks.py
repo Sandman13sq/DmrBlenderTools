@@ -16,6 +16,8 @@ bl_info = {
 }
 
 import bpy
+import json
+from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 classlist = []
 
@@ -43,11 +45,46 @@ Items_ColorSpace = (
 '# FUNCTIONS'
 '# ================================================================================'
 
-def ObjectRenderEnabled(obj):
-    if obj == None:
+def ObjectRenderEnabled(obj, op=None):
+    if not obj:
+        if op != None:
+            op.report({'WARNING'}, "> No object selected")
+        print("> No object selected")
         return False
     
-    return not obj.hide_render and not obj.users_collection[0].hide_render
+    if not obj.select_get():
+        if op != None:
+            op.report({'WARNING'}, "> Object \"{0}\" is active, but not selected".format(obj.name))
+        print("> Object \"{0}\" is active, but not selected".format(obj.name))
+        return False
+    
+    if obj.hide_render:
+        if op != None:
+            op.report({'WARNING'}, "> Object \"{0}\" is active, but not selected".format(obj.name))
+        print("> Object \"{0}\" is active, but not selected".format(obj.name))
+        return False
+    
+    collection = obj.users_collection[0]
+    allcollections = tuple(bpy.data.collections)
+    
+    while collection != None:
+        # Check hide render
+        if collection.hide_render:
+            if op:
+                op.report({'WARNING'}, "> Collection \"{0}\" not enabled for rendering".format(collection.name))
+            print("> Collection \"%s\" not enabled for rendering" % collection.name)
+            return False
+        
+        # Check parent collection
+        nextcollection = None
+        for c in allcollections:
+            if collection.name in [x.name for x in c.children]:
+                nextcollection = c
+                break
+        
+        collection = nextcollection
+    
+    return True
 
 # ----------------------------------------------------------------------------
 
@@ -61,6 +98,8 @@ def ImageFrom4(
     save_image=True,
     values=[0,0,0,0],
     output_image=None, # Uses node image if not specified
+    margin=256,
+    anti_aliasing=False,    # Bakes image of twice the resolution before scaling to target size
     ):
     
     if isinstance(output_image, str):
@@ -72,169 +111,187 @@ def ImageFrom4(
     
     lastsamples = context.scene.cycles.samples
     lastbaketarget = context.scene.render.bake.target
+    lastmargin = context.scene.render.bake.margin
     
     hits = 0
     
-    lastselected = [obj for obj in context.selected_objects]
-    for obj in [obj for obj in context.selected_objects if obj.type != 'MESH']:
-        obj.select_set(False)
-    for obj in context.selected_objects:
-        obj.data.update()
+    tempimages = [] # Image
+    tempnodes = []  # (node_tree, node)
     
-    [bpy.data.images.remove(x) for x in bpy.data.images if '__temp_bake' in x.name]
-    
-    # Bake Per Material
-    for material in materials:
-        print('> Material: ' + material.name)
+    try:
+        lastselected = [obj for obj in context.selected_objects]
+        for obj in [obj for obj in context.selected_objects if obj.type != 'MESH']:
+            obj.select_set(False)
+        for obj in context.selected_objects:
+            obj.data.update()
         
-        nodes = material.node_tree.nodes
-        imagenodes = [nd for nd in nodes if nd.type == 'TEX_IMAGE']
-        imagenode = None
-        tempimagenode = None
+        [bpy.data.images.remove(x) for x in bpy.data.images if '__temp_bake' in x.name]
         
-        # Find image node --------------------------------------------------------------------------
-        if output_image:
-            imagenode = nodes.new(type='ShaderNodeTexImage')
-            imagenode.name = '__temp_' + output_image.name
-            imagenode.image = output_image
+        # Bake Per Material
+        for material in materials:
+            print('> Material: ' + material.name)
+            
+            nodes = material.node_tree.nodes
+            imagenodes = [nd for nd in nodes if nd.type == 'TEX_IMAGE']
+            imagenode = None
+            tempimagenode = None
+            bakeres = (2.0 if anti_aliasing else 1.0)
+            
+            # Find image node --------------------------------------------------------------------------
+            if output_image:
+                imagenode = nodes.new(type='ShaderNodeTexImage')
+                imagenode.name = '__temp_' + output_image.name
+                imagenode.image = output_image
+                nodes.active = imagenode
+                tempimagenode = imagenode
+                tempnodes.append( (material.node_tree, imagenode) )
+            
+            if imagenode == None:
+                imagenode = ([nd for nd in nodes if (nd.select and nd.type == 'TEX_IMAGE')]+[None])[0]
+            
+            if imagenode == None:
+                print("Material \"%s\" No active image node selected" % material.name)
+                continue
+            
             nodes.active = imagenode
-            tempimagenode = imagenode
-        
-        if imagenode == None:
-            imagenode = ([nd for nd in nodes if (nd.select and nd.type == 'TEX_IMAGE')]+[None])[0]
-        
-        if imagenode == None:
-            print("Material \"%s\" No active image node selected" % material.name)
-            continue
-        
-        nodes.active = imagenode
-        lastnodeimage = imagenode.image
-        
-        if not output_image:
-            targetimage = imagenode.image
-        else:
-            targetimage = output_image
-        
-        # Bake to temp images --------------------------------------------------------------------------
-        bakeimages = []
-        
-        outputnodes = [x for x in nodes if x.type == 'OUTPUT_MATERIAL']
-        lastoutput = ([x for x in outputnodes if x.is_active_output]+[None])[0]
-        
-        keyedimage = {}
-        
-        for channelindex, name in enumerate([output1, output2, output3, output4]):
-            # Use Default Value
-            if name == "":
-                print('> "%s", value = %.2f' % (name, values[channelindex]))
-                bakeimage = bpy.data.images.new("__temp_bake%d_%s" % (channelindex, name), 
-                    targetimage.size[0], targetimage.size[1], alpha=True, is_data=True)
-                bakeimages.append(bakeimage)
-                bakeimage.colorspace_settings.name = color_space
+            lastnodeimage = imagenode.image
+            
+            if not output_image:
+                targetimage = imagenode.image
+            else:
+                targetimage = output_image
+            
+            targetimage.scale(int(targetimage.size[0]*bakeres), int(targetimage.size[1]*bakeres))
+            
+            # Bake to temp images --------------------------------------------------------------------------
+            bakeimages = []
+            
+            outputnodes = [x for x in nodes if x.type == 'OUTPUT_MATERIAL']
+            lastoutput = ([x for x in outputnodes if x.is_active_output]+[None])[0]
+            
+            keyedimage = {}
+            
+            for channelindex, name in enumerate([output1, output2, output3, output4]):
+                # Use Default Value
+                if name == "":
+                    print('> "%s", value = %.2f' % (name, values[channelindex]))
+                    bakeimage = bpy.data.images.new("__temp_bake%d_%s" % (channelindex, name), 
+                        int(targetimage.size[0]), int(targetimage.size[1]), alpha=True, is_data=True)
+                    bakeimages.append(bakeimage)
+                    bakeimage.colorspace_settings.name = color_space
+                    
+                    bakeimage.pixels = tuple([values[channelindex]] * len(bakeimage.pixels))
+                    continue
                 
-                bakeimage.pixels = tuple([values[channelindex]] * len(bakeimage.pixels))
-                continue
+                bakekey = str((name, types[channelindex]))
+                
+                if bakekey in keyedimage.keys():
+                    print('> "%s", type \'%s\' (Previously Baked)' % (name, types[channelindex]))
+                    bakeimages.append(keyedimage[bakekey])
+                    continue
+                
+                for nd in outputnodes:
+                    nd.is_active_output = False
+                output = ([x for x in outputnodes if name.lower() == x.label.lower()]+[None])[0]
+                
+                if output:
+                    print('> "%s", type \'%s\'' % (name, types[channelindex]))
+                    
+                    lasttargettype = output.target
+                    
+                    output.is_active_output = True
+                    output.target = 'CYCLES'
+                    
+                    # Bake Setup
+                    context.scene.cycles.samples = samples[channelindex]
+                    context.scene.render.bake.target = 'IMAGE_TEXTURES'
+                    context.scene.render.bake.margin = margin
+                    
+                    bakeimage = bpy.data.images.new(
+                        "__temp_bake%d_%s" % (channelindex, name), 
+                        int(targetimage.size[0]), 
+                        int(targetimage.size[1]), 
+                        alpha=True, 
+                        is_data=True
+                        )
+                    bakeimages.append(bakeimage)
+                    tempimages.append(bakeimage)
+                    bakeimage.colorspace_settings.name = color_space
+                    imagenode.image = bakeimage
+                    
+                    # Bake ----------------------------------------
+                    bpy.ops.object.bake(type=types[channelindex])
+                    
+                    keyedimage[bakekey] = bakeimage
+                    
+                    output.target = lasttargettype
+                else:
+                    bakeimages.append(None)
+                    print('> Output node "%s" not found' % (name))
             
-            bakekey = str((name, types[channelindex]))
+            imagenode.image = targetimage
             
-            if bakekey in keyedimage.keys():
-                print('> "%s", type \'%s\' (Previously Baked)' % (name, types[channelindex]))
-                bakeimages.append(keyedimage[bakekey])
-                continue
+            [
+                material.node_tree.nodes.remove(nd) 
+                for nd in list(material.node_tree.nodes)[::-1] if nd.name[:len("__temp")] == "__temp"
+            ]
+            
+            # Compose final image --------------------------------------------------------------------------
+            if len(bakeimages) > 0:
+                print('> Compositing Output Image "%s"...' % targetimage.name)
+                
+                #image.colorspace_settings.name = 'Linear'
+                #image.alpha_mode = 'STRAIGHT'
+                
+                # List of channels indices[4]
+                readchannel = tuple([{'R':0, 'G':1, 'B':2, 'A':3}[channels[i]] for i in range(0, 4)])
+                
+                pixels = targetimage.pixels
+                w, h = targetimage.size
+                n = w*h
+                n4 = n*4
+                
+                sourcedata = tuple([tuple(bakeimages[i].pixels) for i in range(0, 4)])
+                
+                targetimage.pixels = tuple(
+                    sourcedata[ pi%4 ][ 4*(pi//4)+readchannel[pi%4] ]
+                    for pi in range(0, n4)
+                )
+                
+                targetimage.scale(int(targetimage.size[0]/bakeres), int(targetimage.size[1]/bakeres))
+                
+                # Update Data --------------------------------------------------------------------------
+                for s in [s for a in context.screen.areas for s in a.spaces]:
+                    if s.type == 'IMAGE_EDITOR':
+                        s.image = targetimage
+                        break
+                
+                if save_image:
+                    targetimage.pack()
+                    targetimage.save()
+                    targetimage.update()
+                
+                hits += 1
+            else:
+                print('> No images to bake...')
             
             for nd in outputnodes:
                 nd.is_active_output = False
-            output = ([x for x in outputnodes if name.lower() == x.label.lower()]+[None])[0]
-            
-            if output:
-                print('> "%s", type \'%s\'' % (name, types[channelindex]))
-                
-                lasttargettype = output.target
-                
-                output.is_active_output = True
-                output.target = 'CYCLES'
-                
-                # Bake Setup
-                context.scene.cycles.samples = samples[channelindex]
-                context.scene.render.bake.target = 'IMAGE_TEXTURES'
-                
-                bakeimage = bpy.data.images.new("__temp_bake%d_%s" % (channelindex, name), 
-                    targetimage.size[0], targetimage.size[1], alpha=True, is_data=True)
-                bakeimages.append(bakeimage)
-                bakeimage.colorspace_settings.name = color_space
-                imagenode.image = bakeimage
-                
-                # Bake ----------------------------------------
-                print("> Baking...")
-                bpy.ops.object.bake(type=types[channelindex])
-                
-                keyedimage[bakekey] = bakeimage
-                
-                output.target = lasttargettype
-            else:
-                bakeimages.append(None)
-                print('> Output node "%s" not found' % (name))
-        
-        imagenode.image = targetimage
-        
-        # Compose final image --------------------------------------------------------------------------
-        if len(bakeimages) > 0:
-            print('> Compositing Output Image "%s"...' % targetimage.name)
-            
-            #image.colorspace_settings.name = 'Linear'
-            #image.alpha_mode = 'STRAIGHT'
-            
-            # List of channels indices[4]
-            readchannel = tuple([{'R':0, 'G':1, 'B':2, 'A':3}[channels[i]] for i in range(0, 4)])
-            
-            pixels = targetimage.pixels
-            w, h = targetimage.size
-            n = w*h
-            n4 = n*4
-            
-            #print("src_images: ", [x.name if x else "<None>" for x in bakeimages])
-            
-            sourcedata = tuple([tuple(bakeimages[i].pixels) for i in range(0, 4)])
-            
-            # pixels = image[ writeindex ][ readindex ]
-            targetimage.pixels = tuple(
-                sourcedata[ pi%4 ][ 4*(pi//4)+readchannel[pi%4] ]
-                for pi in range(0, n4)
-            )
-            
-            # Cleanup --------------------------------------------------------------------------
-            print('> Cleaning Up...')
-            
-            for img in list(set(bakeimages)):
-                break
-                bpy.data.images.remove(img)
-            
-            for s in [s for a in context.screen.areas for s in a.spaces]:
-                if s.type == 'IMAGE_EDITOR':
-                    s.image = targetimage
-                    break
-            
-            if save_image:
-                targetimage.save()
-                targetimage.update()
-            
-            imagenode.image = lastnodeimage
-            
-            hits += 1
-        else:
-            print('> No images to bake...')
-        
-        for nd in outputnodes:
-            nd.is_active_output = False
-        lastoutput.is_active_output = True
-        
-        [
-            material.node_tree.nodes.remove(nd) 
-            for nd in list(material.node_tree.nodes)[::-1] if nd.name[:len("__temp")] == "__temp"
-        ]
+            lastoutput.is_active_output = True
+    except:
+        []
+    
+    # Cleanup
+    print('> Cleaning Up...')
+    
+    for ndtree, nd in tempnodes:
+        ndtree.nodes.remove(nd)
+    
+    [bpy.data.images.remove(img) for img in tempimages if img]
     
     context.scene.cycles.samples = lastsamples
     context.scene.render.bake.target = lastbaketarget
+    context.scene.render.bake.margin = lastmargin
     
     for obj in lastselected:
         obj.select_set(True)
@@ -288,6 +345,22 @@ class PRM_BakeTricks_MaterialOutputDef(bpy.types.PropertyGroup):
         self.value = other.value
         
         return self
+       
+    def Serialize(self):
+        return {
+            "output": self.output,
+            "type": self.type,
+            "channel": self.channel,
+            "samples": self.samples,
+            "value": self.value,
+        }
+    
+    def Unserialize(self, data):
+        keys = dir(self)
+        for k,v in data.items():
+            if k in keys:
+                setattr(self, k, v)
+        
 classlist.append(PRM_BakeTricks_MaterialOutputDef)
 
 # ----------------------------------------------------------------------------
@@ -316,12 +389,11 @@ class PRM_BakeTricks_BakeDef(bpy.types.PropertyGroup):
         return self
     
     def Serialize(self):
-        return tuple(
-            (x.output, x.type, x.channel, x.samples, x.value) for x in self.items
-        )
+        return [item.Serialize() for item in self.items]
     
     def Unserialize(self, data):
-        []
+        for dataitem, item in zip(data, self.items):
+            item.Unserialize(dataitem)
     
     def Update(self, context):
         if self.mutex:
@@ -357,25 +429,30 @@ class PRM_BakeTricks_BakeDef(bpy.types.PropertyGroup):
             self, "itemindex", 
             rows=8)
     
-    def Bake(self=None, context=None, output_image=None, save_image=True, op=None):
-        settings = self.Serialize()
+    def Bake(self=None, context=None, output_image=None, save_image=True, op=None, margin=0, anti_aliasing=False):
+        items = list(self.items)
         
         if context == None:
             context = bpy.context
         
+        if margin == 0:
+            margin = context.scene.render.bake.margin
+        
         return ImageFrom4(op, context, 
-            settings[0][0],
-            settings[1][0],
-            settings[2][0],
-            settings[3][0],
+            items[0].output,
+            items[1].output,
+            items[2].output,
+            items[3].output,
             
-            [x.type for x in self.items],
-            channels=[x.channel for x in self.items],
-            samples=[x.samples for x in self.items],
-            values=[x.value for x in self.items],
+            [x.type for x in items],
+            channels=[x.channel for x in items],
+            samples=[x.samples for x in items],
+            values=[x.value for x in items],
             color_space=self.color_space,
             save_image=save_image,
-            output_image=output_image
+            output_image=output_image,
+            margin=margin,
+            anti_aliasing=anti_aliasing,
             )    
 classlist.append(PRM_BakeTricks_BakeDef)
 
@@ -422,6 +499,15 @@ class PRM_BakeTricks_BakeDefList(bpy.types.PropertyGroup):
         newindex = index + (1 if move_down else -1)
         self.items.move(index, newindex)
     
+    def Serialize(self):
+        return {item.name : item.Serialize() for item in self.items}
+    
+    def Unserialize(self, data):
+        for k,v in data.items():
+            item = self.Add()
+            item.name = k
+            item.Unserialize(v)
+    
     def Update(self, context):
         # Add
         if self.op_add_item:
@@ -462,6 +548,9 @@ class PRM_BakeTricks_Master(bpy.types.PropertyGroup):
         if self.op_image_textures:
             self.op_image_textures = False
             context.scene.render.bake.target = 'IMAGE_TEXTURES'
+    
+    def CheckRenderEnabled(self, obj, op=None):
+        return ObjectRenderEnabled(obj, op)
 classlist.append(PRM_BakeTricks_Master)
 
 '# ================================================================================'
@@ -474,8 +563,9 @@ class PRM_UL_BakeDefList(bpy.types.UIList):
         
         r = c.row(align=1)
         
-        itemdata = item.Serialize()
-        op = r.operator("dmr.bake_from_4", text="", icon='RENDER_STILL')
+        itemdata = [(x.output, x.type, x.channel, x.samples, x.value) for x in item.items]
+        
+        op = r.operator("baketricks.bake_from_4", text="", icon='RENDER_STILL')
         op.output1, op.type1, op.channel1, op.samples[0], op.values[0] = itemdata[0]
         op.output2, op.type2, op.channel2, op.samples[1], op.values[1] = itemdata[1]
         op.output3, op.type3, op.channel3, op.samples[2], op.values[2] = itemdata[2]
@@ -497,7 +587,7 @@ classlist.append(PRM_UL_BakeDefList)
 
 class PRM_OT_BakeFrom4(bpy.types.Operator):
     """Composite an image using 4 material outputs"""
-    bl_idname = "dmr.bake_from_4"
+    bl_idname = "baketricks.bake_from_4"
     bl_label = "Bake From 4"
     bl_options = {'REGISTER', 'UNDO'}
     
@@ -534,11 +624,21 @@ class PRM_OT_BakeFrom4(bpy.types.Operator):
         items=Items_ColorSpace,
         )
     
+    margin : bpy.props.IntProperty(name="Margins", default=256)
+    anti_aliasing : bpy.props.BoolProperty(
+        name="Anti Aliasing", 
+        default=False,
+        description="Doubles resolution during bake then scales back afterwards. Increases bake time by 4x"
+        )
+    
     @classmethod
     def poll(self, context):
-        return context.scene.render.engine == 'CYCLES' and ObjectRenderEnabled(context.active_object)
+        return context.scene.render.engine == 'CYCLES'
     
     def invoke(self, context, event):
+        if not ObjectRenderEnabled(context.active_object, self):
+            return {'FINISHED'}
+        
         return context.window_manager.invoke_props_dialog(self)
     
     def draw(self, context):
@@ -566,6 +666,8 @@ class PRM_OT_BakeFrom4(bpy.types.Operator):
         
         layout.prop(self, 'color_space')
         layout.prop(self, 'save_image')
+        layout.prop(self, 'margin')
+        layout.prop(self, 'anti_aliasing')
     
     def execute(self, context):
         return ImageFrom4(self, context, 
@@ -580,6 +682,8 @@ class PRM_OT_BakeFrom4(bpy.types.Operator):
             values=self.values,
             color_space=self.color_space,
             save_image=self.save_image,
+            margin=self.margin,
+            anti_aliasing=self.anti_aliasing
             )
         
         return {'FINISHED'}
@@ -589,7 +693,7 @@ classlist.append(PRM_OT_BakeFrom4)
 
 class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
     """Composite an image using 4 material outputs"""
-    bl_idname = "dmr.batch_bake_from_4"
+    bl_idname = "baketricks.batch_bake_from_4"
     bl_label = "Batch Bake From 4"
     bl_options = {'REGISTER', 'UNDO'}
     
@@ -602,11 +706,22 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
     
     uv_layer : bpy.props.StringProperty(name="UV Layer", default="")
     
+    margin : bpy.props.IntProperty(name="Margin", default=256)
+    
+    anti_aliasing : bpy.props.BoolProperty(
+        name="Anti Aliasing", 
+        default=False,
+        description="Doubles resolution during bake then scales back afterwards. Increases bake time by 4x"
+        )
+    
     @classmethod
     def poll(self, context):
-        return context.scene.render.engine == 'CYCLES' and ObjectRenderEnabled(context.active_object)
+        return context.scene.render.engine == 'CYCLES'
     
     def invoke(self, context, event):
+        if not ObjectRenderEnabled(context.active_object, self):
+            return {'FINISHED'}
+            
         return context.window_manager.invoke_props_dialog(self)
     
     def draw(self, context):
@@ -615,6 +730,8 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
         layout.prop_search(self, 'uv_layer', context.active_object.data, "uv_layers")
         r = layout.row()
         r.label(text="" if self.uv_layer != "" else "(Use Selected Layer)")
+        r.prop(self, 'margin')
+        r.prop(self, 'anti_aliasing')
     
     def execute(self, context):
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -637,7 +754,9 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
                         context, 
                         output_image=image.name, 
                         save_image=self.save_image, 
-                        op=self
+                        op=self,
+                        margin=self.margin,
+                        anti_aliasing=self.anti_aliasing
                         )
             
             obj.data.uv_layers.active = lastuv
@@ -646,6 +765,46 @@ class PRM_OT_BatchBakeFrom4(bpy.types.Operator):
         
         return {'FINISHED'}
 classlist.append(PRM_OT_BatchBakeFrom4)
+
+# ----------------------------------------------------------------------------
+
+class PRM_OT_WriteToFile(bpy.types.Operator, ExportHelper):
+    """Composite an image using 4 material outputs"""
+    bl_idname = "baketricks.save"
+    bl_label = "Write Bake Definitions to File"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    filename_ext = ".json"
+    filter_glob: bpy.props.StringProperty(default="*"+filename_ext, options={'HIDDEN'}, maxlen=255)
+    
+    def execute(self, context):
+        out = context.scene.bake_tricks.bake_defs.Serialize(self.filepath)
+        f = open(self.filepath, 'w')
+        f.write(json.dumps(out, indent=2))
+        f.close()
+        
+        return {'FINISHED'}
+classlist.append(PRM_OT_WriteToFile)
+
+# ----------------------------------------------------------------------------
+
+class PRM_OT_ReadFromFile(bpy.types.Operator, ImportHelper):
+    """Composite an image using 4 material outputs"""
+    bl_idname = "baketricks.load"
+    bl_label = "Read Bake Definitions from File"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    filename_ext = ".json"
+    filter_glob: bpy.props.StringProperty(default="*"+filename_ext, options={'HIDDEN'}, maxlen=255)
+    
+    def execute(self, context):
+        f = open(self.filepath, 'r')
+        data = json.loads(f.read())
+        f.close()
+        context.scene.bake_tricks.bake_defs.Unserialize(data)
+        
+        return {'FINISHED'}
+classlist.append(PRM_OT_ReadFromFile)
 
 '# ================================================================================'
 '# PANELS'
@@ -704,7 +863,7 @@ class PRM_PT_BakeTricks_NodeImages(bpy.types.Panel):
                 r.prop(image, 'bake_tricks_batch', text=image.name, toggle=True)
                 r.prop_search(image, 'bake_tricks_def', bake_defs, 'items', text='', icon='RENDER_STILL', results_are_suggestions=False)
         
-        layout.operator('dmr.batch_bake_from_4')
+        layout.operator('baketricks.batch_bake_from_4')
 classlist.append(PRM_PT_BakeTricks_NodeImages)
 
 # ----------------------------------------------------------------------------
@@ -745,6 +904,11 @@ class PRM_PT_BakeTricks_BakeDef(bpy.types.Panel):
         c.prop(bake_defs, 'op_add_item', text="", icon='ADD')
         c.prop(bake_defs, 'op_remove_item', text="", icon='REMOVE')
         
+        c.separator()
+        
+        c.operator('baketricks.save', text="", icon='EXPORT')
+        c.operator('baketricks.load', text="", icon='IMPORT')
+        
         # Active Item
         activedef = bake_defs.GetActive()
         
@@ -771,15 +935,32 @@ class PRM_PT_BakeTricks_BakeDef(bpy.types.Panel):
                     rr.prop(item, 'value')
             
             # Bake Operator
-            itemdata = activedef.Serialize()
+            itemdata = [(x.output, x.type, x.channel, x.samples, x.value) for x in activedef.items]
             
             if context.scene.render.engine == 'CYCLES':
-                op = c.operator("dmr.bake_from_4", text="Bake Using Defined Settings")
+                op = c.operator("baketricks.bake_from_4", text="Bake Using Defined Settings")
                 op.output1, op.type1, op.channel1, op.samples[0], op.values[0] = itemdata[0]
                 op.output2, op.type2, op.channel2, op.samples[1], op.values[1] = itemdata[1]
                 op.output3, op.type3, op.channel3, op.samples[2], op.values[2] = itemdata[2]
                 op.output4, op.type4, op.channel4, op.samples[3], op.values[3] = itemdata[3]
                 op.color_space = activedef.color_space
+        
+classlist.append(PRM_PT_BakeTricks_BakeDef)
+
+# ----------------------------------------------------------------------------
+
+class PRM_PT_BakeTricks_BakePanel(bpy.types.Panel):
+    bl_label = "Baking"
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = "UI"
+    bl_category = "Bake"
+    bl_parent_id = 'PRM_PT_BakeTricksPanel'
+    
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        render = scene.render
+        cycles = scene.cycles
         
         # Cycles Bake Settings
         c = layout.box().column()
@@ -793,7 +974,7 @@ class PRM_PT_BakeTricks_BakeDef(bpy.types.Panel):
         c.scale_y = 1.5
         c.operator("object.bake", icon='RENDER_STILL').type = cycles.bake_type
         r = c.row(align=1)
-classlist.append(PRM_PT_BakeTricks_BakeDef)
+classlist.append(PRM_PT_BakeTricks_BakePanel)
 
 # ----------------------------------------------------------------------------
 

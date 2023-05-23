@@ -326,13 +326,17 @@ classlist.append(DMR_OT_SuperSymmetrize)
 # ==========================================================================================================
 
 class DMR_OT_SuperSynchronize(bpy.types.Operator):
-    """Synchronizes vertex data of selected vertices with it's closest non-selected mirror vertex. Does not create new geometry. (see Super Symmetrize)"""
+    """Synchronizes vertex and edge data of selected vertices with it's closest non-selected mirror vertex. Does not create new geometry. (see Super Symmetrize)"""
     bl_idname = "dmr.super_synchronize"
     bl_label = "Super Synchronize"
     bl_options = {'REGISTER', 'UNDO'}
     
     vertices : bpy.props.BoolProperty(name="Synchronize Vertices", default=True)
     weights : bpy.props.BoolProperty(name="Synchronize Weights", default=True)
+    
+    creases : bpy.props.BoolProperty(name="Synchronize Creases", default=False)
+    seams : bpy.props.BoolProperty(name="Synchronize Seams", default=False)
+    sharps : bpy.props.BoolProperty(name="Synchronize Sharps", default=False)
     
     @classmethod
     def poll(self, context):
@@ -353,10 +357,15 @@ class DMR_OT_SuperSynchronize(bpy.types.Operator):
         for obj in [obj for obj in context.selected_objects if obj.type == 'MESH']:
             mesh = obj.data
             vertices = tuple(mesh.vertices)
+            edges = tuple(mesh.edges)
             
             selectedverts = [v for v in vertices if v.select]
             nonselectedverts = [v for v in vertices if not v.select]
             vertexpairs = []
+            
+            selectededges = [e for e in edges if e.select]
+            nonselectededges = [e for e in edges if not e.select]
+            edgepairs = []
             
             # Find Vertex Pairs
             for v1 in selectedverts:
@@ -366,6 +375,18 @@ class DMR_OT_SuperSynchronize(bpy.types.Operator):
                 
                 if (v2.co-(v1.co*negxvec)).length <= 0.01:
                     vertexpairs.append((v1, v2))
+            
+            # Find Edge Pairs
+            def EdgeCo(e):
+                return (vertices[e.vertices[0]].co + vertices[e.vertices[1]].co) / 2.0
+            
+            for e1 in selectededges:
+                candidates = nonselectededges[:]
+                candidates.sort(key=lambda e2: (EdgeCo(e2)-(EdgeCo(e1)*negxvec)).length)
+                e2 = candidates[0]
+                
+                if (EdgeCo(e2)-(EdgeCo(e1)*negxvec)).length <= 0.01:
+                    edgepairs.append((e1, e2))
             
             # Find Group Pairs
             vgrouppairs = []
@@ -387,18 +408,18 @@ class DMR_OT_SuperSynchronize(bpy.types.Operator):
                     )
                 }
             
-            for vg1, vg2 in vgrouppairs.items():
-                print(vg1.name, vg2.name)
+            # Synchronize ---------------------------------------------------
             
-            # Synchronize
-            for v1, v2 in vertexpairs:
-                # Positions
-                if self.vertices and v2.co != v1.co*negxvec:
-                    v2.co[:] = v1.co*negxvec
-                    vertexhits += 1
+            # Positions
+            if self.vertices:
+                for v1, v2 in vertexpairs:
+                    if v2.co != v1.co*negxvec:
+                        v2.co[:] = v1.co*negxvec
+                        vertexhits += 1
                 
-                # Weights
-                if self.weights:
+            # Weights
+            if self.weights:
+                for v1, v2 in vertexpairs:
                     #[vg2.remove([v2.index]) for vg2 in [vgroups[vge2.group] for vge2 in v2.groups] if not vg2.lock_weight]
                     
                     for vge1 in v1.groups:
@@ -414,6 +435,21 @@ class DMR_OT_SuperSynchronize(bpy.types.Operator):
                             vg1.add([v2.index], vge1.weight, 'REPLACE')
                     
                     weighthits += 1
+            
+            # Creases
+            if self.creases:
+                for e1, e2 in edgepairs:
+                    e2.crease = e1.crease
+            
+            # Seams
+            if self.seams:
+                for e1, e2 in edgepairs:
+                    e2.use_seam = e1.use_seam
+            
+            # Sharp
+            if self.sharps:
+                for e1, e2 in edgepairs:
+                    e2.use_edge_sharp = e1.use_edge_sharp
         
         bpy.ops.object.mode_set(mode='EDIT')
         

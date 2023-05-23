@@ -1,5 +1,6 @@
 import bpy
 import mathutils
+import math
 
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
@@ -90,7 +91,12 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
     def UpdateGamma(self):
         self.node_tree.nodes['gamma'].inputs[1].default_value = 2.2 if self.gamma_correct else 1.0
     
-    def Init(self):
+    def Init(self, node_tree=None, compositor_tree=None):
+        if node_tree:
+            self.node_tree = node_tree
+        if compositor_tree:
+            self.compositor_tree = compositor_tree
+        
         if not self.node_tree:
             self.node_tree = bpy.data.node_groups.new(name=self.name + " - Material", type='ShaderNodeTree')
         if not self.compositor_tree:
@@ -257,8 +263,9 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         # Fix height
         while len(self.slots) < self.height:
             slots = self.slots.add()
+            self.CopySlot(self.slots[lastheight-1], self.slots[-1])
         while len(self.slots) > self.height:
-            self.slots.remove(list(self.slots)[-1])
+            self.slots.remove(len(self.slots)-1)
         
         # Fix width
         for y, slot in enumerate(self.slots):
@@ -274,11 +281,12 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         self.color_index = max(0, min(self.width-1, self.color_index))
         self.ramp_index = max(0, min(self.height-1, self.ramp_index))
         
-        for compositor, ndtree in enumerate([self.node_tree, self.compositor_tree]):
-            nd = ndtree.nodes['madd']
-            nd.inputs[1].default_value = 1/self.width
-            nd.inputs[2].default_value = 0.5/self.width
-            ndtree.nodes['combxyz'].inputs[1].default_value = (0.5 + self.ramp_index)/self.height
+        for index, ndtree in enumerate([self.node_tree, self.compositor_tree]):
+            if ndtree:
+                nd = ndtree.nodes['madd']
+                nd.inputs[1].default_value = 1/self.width
+                nd.inputs[2].default_value = 0.5/self.width
+                ndtree.nodes['combxyz'].inputs[1].default_value = (0.5 + self.ramp_index)/self.height
         
         # Resize UVS
         if self.collection and (lastwidth > 0 and lastheight > 0) and (lastwidth != self.width or lastheight != self.height):
@@ -333,12 +341,12 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         
         rows = [
             [
-                #list(mathutils.Color(color[:3]).from_srgb_to_scene_linear())+[color[3]]
-                list(mathutils.Color(color[:3]))+[color[3]]
+                list(mathutils.Color(color[:3]).from_srgb_to_scene_linear())+[color[3]]
+                #list(mathutils.Color(color[:3]))+[color[3]]
                 for color in r
             ]
             for r in rows
-        ]
+        ][::-1]
         
         # Write to colors
         for r, slot in enumerate(self.slots):
@@ -361,6 +369,83 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
             for color in slot.colors:
                 color.color = color.color
     
+    def WriteToColors(self, objects):
+        objects = list(set(objects))
+        
+        mode = bpy.context.object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        for obj in objects:
+            if obj.type == 'MESH':
+                if obj.data.color_attributes and 'palette' in list(obj.data.uv_layers.keys()):
+                    lyr = obj.data.color_attributes.active_color
+                    uvlyr = obj.data.uv_layers['palette']
+                    
+                    targetvertices = tuple([v.index for v in obj.data.vertices if v.select])
+                    targetloops = [l for p in obj.data.polygons if (p.select and not p.hide) for l in p.loop_indices]
+                    targetloops += [l.index for l in obj.data.loops if l.vertex_index in targetvertices]
+                    
+                    for l in targetloops:
+                        lyr.data[l].color = self.EvaluateColor(uvlyr.data[l].uv[0])
+        
+        bpy.ops.object.mode_set(mode=mode)
+        
+    def EvaluateColor(self, x, slot_index=None):
+        if slot_index == None:
+            slot_index = self.ramp_index
+        
+        pos = (x * self.width - 0.5)
+        pos = max(0, min(pos, self.width-1))
+        
+        amt = pos - int(pos)
+        col1 = self.slots[slot_index].colors[math.floor(pos)].color
+        col2 = self.slots[slot_index].colors[math.ceil(pos)].color
+        
+        return mathutils.Vector(col1).lerp(col2, amt)
+    
+    def FindColorIndex(self, colorvec):
+        colorvec = mathutils.Vector(colorvec)
+        vecsize = len(colorvec)
+        slotcolors = [(i, mathutils.Vector(element.color)) for i,element in enumerate(self.ActiveSlot().colors)]
+        slotcolors.sort(key=lambda x: (mathutils.Vector(x[1][:vecsize])-colorvec).length_squared)
+        
+        return slotcolors[0][0]
+    
+    def BuildFromObjects(self, objects, use_polygons=True):
+        objects = [obj for obj in objects if obj.type == 'MESH']
+        
+        allcolors = [
+            mathutils.Vector(vc.color[:3])
+            for obj in objects if obj.data.color_attributes.active_color
+            for vc in obj.data.color_attributes.active_color.data
+        ]
+        
+        for c in allcolors:
+            c.freeze()
+        
+        uniquecolors = list(set(allcolors))
+        uniquecolors.sort(key=lambda vc: -allcolors.count(vc))
+        
+        print([allcolors.count(vc) for vc in uniquecolors][:20])
+        
+        for i, element in enumerate(self.ActiveSlot().colors[:min(self.width, len(uniquecolors))]):
+            element.color = list(uniquecolors[i]) + [1]*(4-len(uniquecolors[i]))
+    
+    def VCToUVs(self, objects):
+        objects = [obj for obj in objects if obj.type == 'MESH']
+        
+        for obj in objects:
+            uvlayers = obj.data.uv_layers
+            if "palette" not in uvlayers.keys():
+                uvlayers.new(name="palette")
+                for uv in uvlayers.data:
+                    uv.uv = (0, 0)
+            uvlyr = uvlayers["palette"].data
+            vclyr = obj.data.color_attributes.active_color.data
+            
+            for l in range(0, len(uvlyr)):
+                uvlyr[l].uv[0] = (self.FindColorIndex(vclyr[l].color[:3]) + 0.5) / self.width
+        
 classlist.append(RampPalette_NodeGroup)
 
 # -------------------------------------------------------------------
@@ -389,23 +474,21 @@ class RampPalette_Master(bpy.types.PropertyGroup):
         for ng in bpy.data.node_groups:
             if ng not in [x.node_tree for x in self.data]:
                 if sum([1 for nd in ng.nodes if nd.label == '<RAMP_PALETTE>']):
+                    image = None
+                    for nd in ng.nodes:
+                        if nd.type == 'TEX_IMAGE':
+                            if nd.image:
+                                image = nd.image
+                                break
+                                
                     entry = self.data.add()
+                    
+                    entry.Init(node_tree=ng)
                     entry.name = ng.name
-                    entry.node_tree = ng
-                    rampnodes = entry.GetRampNodes()
-                    rampdata = [
-                        [tuple(e.color) for e in nd.color_ramp.elements]
-                        for nd in rampnodes
-                    ]
                     
-                    height = len(rampnodes)
-                    width = len(rampdata[0])
-                    entry.height = height
-                    entry.width = width
+                    if image:
+                        entry.FromImage(image)
                     
-                    for i, nd in enumerate(entry.GetRampNodes()):
-                        for j, e in enumerate(nd.color_ramp.elements):
-                            e.color = rampdata[i][j]
         
 classlist.append(RampPalette_Master)
 
@@ -545,16 +628,21 @@ class RAMPPALETTE_OP_Set_UV(RampPalette_OP):
             if obj.type != 'MESH':
                 continue
             if "palette" not in obj.data.uv_layers:
-                obj.data.uv_layers.new(name="palette")
+                lyr = obj.data.uv_layers.new(name="palette")
+                for uv in lyr.data:
+                    uv.uv = (0, 0)
             lyrdata = obj.data.uv_layers['palette'].data
             
             vertices = tuple(obj.data.vertices)
             loops = tuple(obj.data.loops)
             
-            targetpolys = tuple([p for p in obj.data.polygons if p.select])
+            looppool = [l for p in obj.data.polygons if (not p.hide) for l in p.loop_indices]
+            targetpolys = tuple([p for p in obj.data.polygons if (p.select and not p.hide)])
             usedvertices = tuple([v for p in targetpolys for v in p.vertices])
             targetloops = [l for p in targetpolys for l in p.loop_indices]
             targetloops += [l.index for l in loops if (vertices[l.vertex_index].select and l.vertex_index not in usedvertices)]
+            
+            targetloops = [l for l in targetloops if l in looppool]
             
             print(len(targetloops))
             
@@ -735,6 +823,42 @@ class RAMPPALETTE_OP_SearchNodeGroups(bpy.types.Operator):
         return {'FINISHED'}
 classlist.append(RAMPPALETTE_OP_SearchNodeGroups)
 
+# ----------------------------------------------------------------------------------
+class RAMPPALETTE_OP_WriteToVC(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "ramppalette.write_to_vcolors"
+    bl_label = "Write To Vertex Colors"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        context.scene.ramp_palettes.Active().WriteToColors(context.selected_objects)
+        return {'FINISHED'}
+classlist.append(RAMPPALETTE_OP_WriteToVC)
+
+# ----------------------------------------------------------------------------------
+class RAMPPALETTE_OP_BuildFromVC(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "ramppalette.build_from_vc"
+    bl_label = "Build Slot From VC"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        context.scene.ramp_palettes.Active().BuildFromObjects(context.selected_objects)
+        return {'FINISHED'}
+classlist.append(RAMPPALETTE_OP_BuildFromVC)
+
+# ----------------------------------------------------------------------------------
+class RAMPPALETTE_OP_VCToUVs(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "ramppalette.vc_to_uvs"
+    bl_label = "Vertex Colors to Palette UVs"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        context.scene.ramp_palettes.Active().VCToUVs(context.selected_objects)
+        return {'FINISHED'}
+classlist.append(RAMPPALETTE_OP_VCToUVs)
+
 '# ================================================================================================================='
 '# PANELS'
 '# ================================================================================================================='
@@ -776,6 +900,7 @@ class RAMPPALETTE_PT_RampPalettePanel_Characters(bpy.types.Panel):
         
         r = layout.row()
         r.operator('ramppalette.palette_add', icon='ADD')
+        r.operator('ramppalette.search_node_groups', icon='ZOOM_SELECTED', text="")
         
         # Palette List
         layout.template_list("RAMPPALLETTE_UL_PaletteList", "", master, 'data', master, "data_index", rows=4)
@@ -915,7 +1040,7 @@ def register():
     bpy.types.Scene.ramp_palettes = bpy.props.PointerProperty(name='Ramp Palette Master', type=RampPalette_Master)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":
