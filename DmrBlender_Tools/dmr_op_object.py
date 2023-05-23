@@ -449,6 +449,88 @@ classlist.append(DMR_OP_NewObjectProperty)
 
 # =============================================================================
 
+class DMR_OP_SnapVerticesOfMultipleObjects(bpy.types.Operator):
+    bl_label = "Snap Vertices to Active Object"
+    bl_idname = 'dmr.snap_vertices_to_active'
+    bl_description = 'Matches vertex position of selected objects to active'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    selected_only : bpy.props.BoolProperty(name="Selected Vertices Only", default=True)
+    merge_distance : bpy.props.FloatProperty(name="Merge Distance", default=0.1, min=0)
+    
+    snap : bpy.props.EnumProperty(name="Snap Target", items=(
+        ('ACTIVE', "Active Object", "Snap to active object's vertices"),
+        ('CENTER', "Center", "Snap to middle distance between matching vertices"),
+    ))
+    
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'MESH' and context.object.mode == 'EDIT'
+    
+    def execute(self, context):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        active = context.active_object
+        
+        targetobjects = [x for x in context.selected_objects if x.type == 'MESH']
+        
+        vertmap = {
+            obj: tuple([v for v in obj.data.vertices if (v.select or not self.selected_only)])
+            for obj in targetobjects
+        }
+        
+        activeverts = vertmap[active]
+        merge_distance = self.merge_distance
+        hits = 0
+        
+        # Snap to active
+        if self.snap == 'ACTIVE':
+            for obj in targetobjects:
+                if obj == active:
+                    continue
+                verts = vertmap[obj]
+                
+                for v1 in verts:
+                    d = merge_distance
+                    outvert = v1
+                    for v2 in activeverts:
+                        if (v2.co-v1.co).length <= d:
+                            d = (v2.co-v1.co).length
+                            outvert = v2
+                    if v1 != outvert:
+                        v1.co = outvert.co
+                        hits += 1
+        
+        # Snap to mid distance
+        if self.snap == 'CENTER':
+            for obj in targetobjects:
+                if obj == active:
+                    continue
+                verts = vertmap[obj]
+                
+                for v1 in verts:
+                    d = merge_distance
+                    outvert = v1
+                    for v2 in activeverts:
+                        if (v2.co-v1.co).length <= d:
+                            d = (v2.co-v1.co).length
+                            outvert = v2
+                    if v1 != outvert:
+                        v1.co = (v1.co+outvert.co) / 2
+                        hits += 1
+        
+        for obj in context.selected_objects:
+            obj.data.update()
+        
+        self.report({'INFO'}, "Snapped {0} vertices".format(hits))
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_SnapVerticesOfMultipleObjects)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
