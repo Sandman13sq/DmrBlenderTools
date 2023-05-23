@@ -32,7 +32,7 @@ class DMR_PT_UVEditor(bpy.types.Panel):
     bl_label = "UV Layers"
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     
     @classmethod 
     def poll(self, context):
@@ -49,7 +49,7 @@ class DMR_PT_UVEditor_Layers(bpy.types.Panel):
     bl_label = "Group Panel"
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     bl_parent_id = 'DMR_PT_UVEditor'
     
     @classmethod 
@@ -74,8 +74,8 @@ class DMR_PT_UVEditor_Layers(bpy.types.Panel):
         
         if lyr:
             cc.separator()
-            cc.operator("object.vertex_group_move", icon='TRIA_UP', text="").direction = 'UP'
-            cc.operator("object.vertex_group_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+            cc.operator("dmr.uv_layer_move", icon='TRIA_UP', text="").direction = 'UP'
+            cc.operator("dmr.uv_layer_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
         
         cc.separator()
         
@@ -92,7 +92,7 @@ def register():
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

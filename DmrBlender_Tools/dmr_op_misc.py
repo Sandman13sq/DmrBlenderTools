@@ -1,6 +1,7 @@
 import bpy
 import os
 
+
 classlist = []
 
 # =============================================================================
@@ -412,12 +413,51 @@ classlist.append(DMR_OP_ToggleChildrenVisibility)
 
 # =============================================================================
 
+class DMR_OP_CleanUnusedDrivers(bpy.types.Operator):
+    bl_label = "Clean Unused Drivers"
+    bl_idname = 'dmr.clean_unused_drivers'
+    bl_description = 'Removes drivers with no users'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        """
+            Credit: batFINGER on Stack Overflow
+            https://blender.stackexchange.com/questions/212450/invalid-drivers-arent-shown-and-cant-be-deleted
+        """
+        
+        colls = [
+            p for p in dir(bpy.data)
+            if isinstance(getattr(bpy.data, p), bpy.types.bpy_prop_collection)
+            ]
+
+        for p in colls:
+            for ob in getattr(bpy.data, p, []):
+                ad = getattr(ob, "animation_data", None)
+                if not ad:
+                    continue
+                bung_drivers = []
+                # find bung drivers
+                for d in ad.drivers:
+                    try:
+                        ob.path_resolve(d.data_path)
+                    except ValueError:
+                        bung_drivers.append(d)
+                # remove bung drivers
+                while bung_drivers:
+                    ad.drivers.remove(
+                            bung_drivers.pop()
+                            )
+        return {'FINISHED'}
+classlist.append(DMR_OP_CleanUnusedDrivers)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

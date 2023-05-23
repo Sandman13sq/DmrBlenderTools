@@ -250,7 +250,7 @@ def register():
     #bpy.types.VIEW3D_MT_pose_context_menu.prepend(bone_groups_context_draw)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
     #bpy.types.VIEW3D_MT_pose_context_menu.remove(bone_groups_context_draw)
 

@@ -889,7 +889,7 @@ def register():
     bpy.types.Scene.editmodecolor_all = bpy.props.PointerProperty(type=DMR_VertexColorAll)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

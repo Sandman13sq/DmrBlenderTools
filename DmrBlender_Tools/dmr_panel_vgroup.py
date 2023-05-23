@@ -27,7 +27,7 @@ class DMR_PT_3DViewVertexGroups(bpy.types.Panel):
     bl_label = "Vertex Groups"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     
     @classmethod 
     def poll(self, context):
@@ -44,7 +44,7 @@ class DMR_PT_3DViewVertexGroups_Groups(bpy.types.Panel):
     bl_label = "Group Panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     bl_parent_id = 'DMR_PT_3DViewVertexGroups'
     
     @classmethod 
@@ -149,7 +149,7 @@ class DMR_PT_3DViewVertexGroups_Active(bpy.types.Panel):
     bl_label = "Active Vertex"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     bl_parent_id = 'DMR_PT_3DViewVertexGroups'
     bl_options = {'DEFAULT_CLOSED'}
     
@@ -167,7 +167,7 @@ class DMR_PT_3DViewVertexGroups_UnusedDeforms(bpy.types.Panel):
     bl_label = "Unused Deforms"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     bl_parent_id = 'DMR_PT_3DViewVertexGroups'
     bl_options = {'DEFAULT_CLOSED'}
     
@@ -212,7 +212,7 @@ def register():
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":

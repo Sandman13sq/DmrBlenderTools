@@ -8,7 +8,7 @@ class DMR_PT_3DViewShapeKeys(bpy.types.Panel): # ------------------------------
     bl_label = "Shape Keys"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Mesh" # Name of sidebar
+    bl_category = "Edit" # Name of sidebar
     
     @classmethod 
     def poll(self, context):
@@ -45,7 +45,7 @@ def register():
         bpy.utils.register_class(c)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":
