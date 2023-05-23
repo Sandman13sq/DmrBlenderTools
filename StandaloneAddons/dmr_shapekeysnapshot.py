@@ -486,7 +486,7 @@ def register():
     bpy.types.Scene.sksnap_extend_view = bpy.props.BoolProperty(name="Extend View", default=False)
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":
