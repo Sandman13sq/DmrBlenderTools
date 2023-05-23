@@ -1,6 +1,7 @@
 import bpy
 import bmesh
 import mathutils
+import math
 
 classlist = []
 
@@ -182,40 +183,39 @@ class DMR_OP_PoseBoneToView(bpy.types.Operator):
     bl_idname = 'dmr.pose_bone_to_view'
     bl_description = "Sets Pose bone's location and rotation to Viewport's"
     bl_options = {'REGISTER', 'UNDO'}
+    
+    location : bpy.props.BoolProperty(name="Copy Location", default=True)
+    rotation : bpy.props.BoolProperty(name="Copy Rotation", default=True)
 
     @classmethod
     def poll(self, context):
         return context.object and context.object.type == 'ARMATURE' and context.object.mode == 'POSE'
     
     def execute(self, context):
-        depsgraph = context.evaluated_depsgraph_get()
-        scene = context.scene
+        bpy.ops.object.mode_set(mode='OBJECT')
         
-        ray = scene.ray_cast(depsgraph, (1, 1, 1), (-1,-1,-1) )
+        rdata = bpy.context.region_data
+        viewloc = rdata.view_location.copy()
+        viewrot = rdata.view_rotation.copy()
+        viewdir = viewrot @ mathutils.Vector((0,0,1))
         
-        object = context.object
-        bones = object.data.bones
-        pbones = object.pose.bones
-        bone = [x for x in bones if x.select]
+        for pb in context.object.pose.bones:
+            if pb.bone.select and not pb.bone.hide:
+                ptransform = pb.matrix.decompose()
+                
+                if self.rotation and self.location:
+                    loc = viewloc + (viewdir*rdata.view_distance)
+                    rot = viewrot
+                elif self.location:
+                    loc = viewloc + (viewdir*rdata.view_distance)
+                    rot = ptransform[1]
+                elif self.rotation:
+                    loc = ptransform[0]
+                    rot = viewrot
+                
+                pb.matrix = mathutils.Matrix.LocRotScale(loc, rot, None)
         
-        if len(bone) == 0:
-            self.report({'WARNING'}, 'No bones selected')
-            return {'FINISHED'}
-        
-        pbone = pbones[bone[0].name]
-        
-        rdata = context.region_data
-        rot = rdata.view_rotation.copy()
-        loc = rdata.view_location.copy()
-        
-        pbone.matrix = mathutils.Matrix.Translation(loc)
-        pbone.rotation_quaternion = rot
-        
-        bpy.ops.transform.translate(value=(0, 0, rdata.view_distance), 
-            orient_type='LOCAL', 
-            orient_matrix_type='LOCAL', 
-            constraint_axis=(False, False, True), 
-            )
+        bpy.ops.object.mode_set(mode='POSE')
         
         return {'FINISHED'}
 classlist.append(DMR_OP_PoseBoneToView)
@@ -621,6 +621,28 @@ classlist.append(DMR_OP_ActionScale)
 
 # =============================================================================
 
+class DMR_OP_ResetArmaturePose(bpy.types.Operator):
+    bl_label = "Reset Pose"
+    bl_idname = 'dmr.reset_armature_pose'
+    bl_description = "Clears Transforms For Armature"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'ARMATURE'
+    
+    def execute(self, context):
+        obj = context.object
+        
+        for pb in obj.pose.bones:
+            pb.matrix_basis = mathutils.Matrix.Identity(4)
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_ResetArmaturePose)
+
+# =============================================================================
+
 addon_keymaps = []
 def register():
     for c in classlist:
@@ -641,7 +663,7 @@ def register():
         addon_keymaps.append((km, kmi))
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
     
     # Remove hotkeys

@@ -29,7 +29,11 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
         c.operator('dmr.reset_3d_cursor_x', text = 'x')
         c.scale_x = 0.05
         
-        row.column().operator('dmr.toggle_pose_all', icon = 'ARMATURE_DATA', text = '')
+        c = row.row(align = 1)
+        c.operator('dmr.toggle_pose_all', icon = 'ARMATURE_DATA', text = '')
+        c = c.column(align = 1)
+        c.operator('dmr.reset_armature_pose', text = 'R')
+        c.scale_x = 0.05
         
         row.column().operator('dmr.image_reload', icon = 'IMAGE_DATA', text = '')
         
@@ -44,8 +48,16 @@ class DMR_PT_HotMenu(bpy.types.Panel): # ------------------------------
         
         # Toggles
         row = layout.row(align = 1)
-        row.scale_x = 4.0
+        row.scale_x = 3.0
         row.scale_y = 1.0
+        
+        rr = row.row()
+        rr.scale_x = 1
+        
+        ft = context.scene.cursor.location[2] / 0.3048
+        inch = (ft-int(ft)) * 12.0
+        rr.label(text="%d'%d\"" % (int(ft), inch))
+        
         row.alignment = 'CENTER'
         row.column().prop(rd, "use_simplify", icon_only=True, icon='MOD_SUBSURF')
         row.column().prop(bpy.context.space_data.overlay, 'show_split_normals', icon_only=True, icon='NORMALS_VERTEX_FACE')
@@ -91,8 +103,8 @@ def ActionChange(self, context):
 def SceneRangeFromAction(self, context):
     if self.op_scene_range_from_action:
         action = self.animation_data.action
-        context.scene.frame_start = action.frame_start
-        context.scene.frame_end = action.frame_end
+        context.scene.frame_start = int(action.frame_start)
+        context.scene.frame_end = int(action.frame_end)
         self.op_scene_range_from_action = False
 
 def ActionChangeSync(self, context):
@@ -117,7 +129,7 @@ def register():
     )
 
 def unregister():
-    for c in reversed(classlist):
+    for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
 
 if __name__ == "__main__":
