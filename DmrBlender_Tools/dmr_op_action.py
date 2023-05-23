@@ -128,17 +128,23 @@ classlist.append(DMR_OP_GroupActionChannelsByPathName)
 # =============================================================================
 
 class DMR_OP_ActionScaleLocation(bpy.types.Operator):
-    bl_label = "Scale Action"
+    bl_label = "Scale Action Locations"
     bl_idname = 'dmr.action_scale_location'
-    bl_description = "Scale action location keyframes by value"
+    bl_description = "Scale action location keyframes by value. Use when rescaling an entire model by an amount"
     bl_options = {'REGISTER', 'UNDO'}
     
     action : bpy.props.StringProperty(name="Action Name")
-    scale : bpy.props.FloatProperty()
+    scale : bpy.props.FloatProperty(name="Scale", default=1.0)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'action', bpy.data, 'actions')
+        layout.prop(self, 'scale')
     
     def execute(self, context):
         if not self.action in bpy.data.actions.keys():
-            self.info({'WARNING'}, "No action exists with name \"%s\"" % self.action)
+            #self.report({'WARNING'}, "No action exists with name \"%s\"" % self.action)
+            return {'FINISHED'}
         
         action = bpy.data.actions[self.action]
         scale = self.scale
@@ -152,6 +158,119 @@ class DMR_OP_ActionScaleLocation(bpy.types.Operator):
         
         return {'FINISHED'}
 classlist.append(DMR_OP_ActionScaleLocation)
+
+# =============================================================================
+
+class DMR_OP_ActionScaleTime(bpy.types.Operator):
+    bl_label = "Scale Action Time"
+    bl_idname = 'dmr.action_scale_time'
+    bl_description = "Scale action keyframes and frame start and end by value"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    action : bpy.props.StringProperty(name="Action Name")
+    scale : bpy.props.FloatProperty(name="Scale", default=1.0)
+    
+    def invoke(self, context, event):
+        obj = context.object
+        if obj and obj.animation_data and obj.animation_data.action:
+            action = obj.animation_data.action
+            self.action = action.name
+        
+        return self.execute(context)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'action', bpy.data, 'actions')
+        layout.prop(self, 'scale')
+    
+    def execute(self, context):
+        if not self.action in bpy.data.actions.keys():
+            #self.report({'WARNING'}, "No action exists with name \"%s\"" % self.action)
+            return {'FINISHED'}
+        
+        action = bpy.data.actions[self.action]
+        scale = self.scale
+        
+        for fc in action.fcurves:
+            for k in fc.keyframe_points:
+                k.co_ui[0] = (k.co_ui[0] - action.frame_start) * scale + action.frame_start
+        
+        action.frame_end = (action.frame_end-action.frame_start) * scale + action.frame_start
+        
+        self.report({'INFO'}, "Action \"%s\" scaled by %s" % (self.action, self.scale))
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_ActionScaleTime)
+
+# =============================================================================
+
+class DMR_OP_ActionScaleResize(bpy.types.Operator):
+    bl_label = "Action Resize"
+    bl_idname = 'dmr.action_resize'
+    bl_description = "Adjust frame_start and frame_end of an action while maintaining keyframe relative positions"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    action : bpy.props.StringProperty(name="Action Name")
+    frame_start : bpy.props.FloatProperty(name="Frame Start", default=1.0)
+    frame_end : bpy.props.FloatProperty(name="Frame End", default=1.0)
+    round_frames : bpy.props.BoolProperty(name="Round Frames", default=True)
+    
+    def invoke(self, context, event):
+        obj = context.object
+        if obj and obj.animation_data and obj.animation_data.action:
+            action = obj.animation_data.action
+            self.action = action.name
+            
+            if not action.use_frame_range:
+                action.use_frame_range = True
+            
+            if action.frame_start == 0 and action.frame_end == 0:
+                action.frame_start = context.scene.frame_start
+                action.frame_end = context.scene.frame_end
+            
+            self.frame_start = action.frame_start
+            self.frame_end = action.frame_end
+        
+        return self.execute(context)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop_search(self, 'action', bpy.data, 'actions')
+        r = layout.row()
+        r.prop(self, 'frame_start')
+        r.prop(self, 'frame_end')
+    
+    def execute(self, context):
+        if not self.action in bpy.data.actions.keys():
+            return {'FINISHED'}
+        
+        action = bpy.data.actions[self.action]
+        lastrange = [action.frame_start, action.frame_end]
+        
+        d1 = action.frame_end-action.frame_start
+        d2 = self.frame_end-self.frame_start
+        
+        if d1 > 0:
+            scale = d2/d1
+            f1 = action.frame_start
+            
+            if self.round_frames:
+                for fc in action.fcurves:
+                    for k in fc.keyframe_points:
+                        k.co_ui[0] = round( (k.co_ui[0]-action.frame_start) * scale + self.frame_start )
+            else:
+                for fc in action.fcurves:
+                    for k in fc.keyframe_points:
+                        k.co_ui[0] = (k.co_ui[0]-action.frame_start) * scale + self.frame_start
+            
+            action.frame_end = (action.frame_end-action.frame_start) * scale + self.frame_start
+            action.frame_start = self.frame_start
+            
+            self.report({'INFO'}, "Action \"%s\" resized from {0} to {1}".format(
+                lastrange, [self.frame_start, self.frame_end]))
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_ActionScaleResize)
 
 # =============================================================================
 
