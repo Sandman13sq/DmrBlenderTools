@@ -86,7 +86,7 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
     def GetObjects(self):
         if self.collection:
             return [obj for obj in self.collection.all_objects if obj.type == 'MESH']
-        return bpy.context.selected_objects
+        return [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
     
     def UpdateGamma(self):
         self.node_tree.nodes['gamma'].inputs[1].default_value = 2.2 if self.gamma_correct else 1.0
@@ -437,8 +437,7 @@ class RampPalette_NodeGroup(bpy.types.PropertyGroup):
         for obj in objects:
             uvlayers = obj.data.uv_layers
             if "palette" not in uvlayers.keys():
-                uvlayers.new(name="palette")
-                for uv in uvlayers.data:
+                for uv in uvlayers.new(name="palette").data:
                     uv.uv = (0, 0)
             uvlyr = uvlayers["palette"].data
             vclyr = obj.data.color_attributes.active_color.data
@@ -884,6 +883,26 @@ class RAMPPALETTE_PT_RampPalettePanel(bpy.types.Panel):
         layout = self.layout
         
 classlist.append(RAMPPALETTE_PT_RampPalettePanel)
+
+# -------------------------------------------------------------------
+
+class RAMPPALETTE_PT_RampPalettePanel_Operators(bpy.types.Panel):
+    bl_label = "Operators"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Edit" # Name of sidebar
+    bl_parent_id = 'RAMPPALETTE_PT_RampPalettePanel'
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        master = context.scene.ramp_palettes
+        layout = self.layout.column()
+        layout.operator('ramppalette.search_node_groups')
+        layout.operator('ramppalette.build_from_vc')
+        layout.operator('ramppalette.vc_to_uvs')
+        layout.operator('ramppalette.write_to_vcolors')
+    
+classlist.append(RAMPPALETTE_PT_RampPalettePanel_Operators)
 
 # -------------------------------------------------------------------
 

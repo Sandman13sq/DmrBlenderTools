@@ -337,7 +337,7 @@ classlist.append(DMR_OT_ArmatureToggleBoneLayerIndex)
 
 # ---------------------------------------------------------------------------------
 
-class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
+class DMR_OT_MoveMetaLayerRow(bpy.types.Operator):
     bl_idname = "dmr.rigify_meta_move_row"
     bl_label = "Move Rigify Row"
     
@@ -364,7 +364,30 @@ class DMR_OT_MoveRigifyLayerRow(bpy.types.Operator):
         for lyr in lyrnext:
             lyr.row = index
         return {'FINISHED'}
-classlist.append(DMR_OT_MoveRigifyLayerRow)
+classlist.append(DMR_OT_MoveMetaLayerRow)
+
+# ---------------------------------------------------------------------------------
+
+class DMR_OT_MetaLayerSeparator(bpy.types.Operator):
+    bl_idname = "dmr.rigify_meta_insert_separator"
+    bl_label = "Insert Separator"
+    
+    row : bpy.props.IntProperty(name="Row")
+    push_down : bpy.props.BoolProperty(name="Row", default=True)
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == 'ARMATURE'
+
+    def execute(self, context):
+        rigifylayers = context.object.data.rigify_layers
+        targetlayers = [x for x in rigifylayers if ((x.row > self.row) if self.push_down else (x.row >= self.row))]
+        
+        for lyr in targetlayers:
+            lyr.row += 1
+        
+        return {'FINISHED'}
+classlist.append(DMR_OT_MetaLayerSeparator)
 
 # ---------------------------------------------------------------------------------
 
@@ -498,7 +521,6 @@ class DMR_OT_RigifyMetaSetFKTweakLayers(bpy.types.Operator):
 classlist.append(DMR_OT_RigifyMetaSetFKTweakLayers)
 
 # ---------------------------------------------------------------------------------
-
 
 '# ================================================================================'
 '# PANELS'
@@ -693,6 +715,8 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
         
         #editlayers = context.scene.rigify_meta_layer_mode;
         
+        r = None
+        
         # Layers
         for i, lyrdata in enumerate(sortedlayers):
             if lyrdata.name == "":
@@ -703,6 +727,32 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
             
             # New Row
             if lyrrow != lastrow or (i == len(sortedlayers)-1):
+                if r:
+                    rr = r.row(align=1)
+                    rr.scale_x = 0.7
+                    
+                    cc = rr.column(align=1)
+                    cc.scale_y = 0.5
+                    
+                    op = cc.operator('dmr.rigify_meta_move_row', text='', icon='TRIA_UP')
+                    op.row = lastrow
+                    op.direction = 'UP'
+                    
+                    op = cc.operator('dmr.rigify_meta_move_row', text='', icon='TRIA_DOWN')
+                    op.row = lastrow
+                    op.direction = 'DOWN'
+                    
+                    cc = rr.column(align=1)
+                    cc.scale_y = 0.5
+                    
+                    op = cc.operator('dmr.rigify_meta_insert_separator', text='', icon='TRIA_UP_BAR')
+                    op.row = lastrow
+                    op.push_down = False
+                    
+                    op = cc.operator('dmr.rigify_meta_insert_separator', text='', icon='TRIA_DOWN_BAR')
+                    op.row = lastrow
+                    op.push_down = True
+                
                 if lyrrow - lastrow > 1:
                     c.separator()
                 
@@ -726,14 +776,7 @@ class DMR_PT_Rigify_Meta(RigifyPanelSuper, bpy.types.Panel):
             rr.operator('dmr.armature_layer_visibility', text='', icon='VIEWZOOM').layers = [x==lyrindex for x in range(0, 32)]
             ##rr.operator('dmr.armature_layer_assign_index', text='', icon='GREASEPENCIL').layer = lyrindex
             
-            cc = rr.column(align=1)
-            cc.scale_y = 0.5
-            op = cc.operator('dmr.rigify_meta_move_row', text='', icon='TRIA_UP')
-            op.row = lyrdata.row
-            op.direction = 'UP'
-            op = cc.operator('dmr.rigify_meta_move_row', text='', icon='TRIA_DOWN')
-            op.row = lyrdata.row
-            op.direction = 'DOWN'
+            
 classlist.append(DMR_PT_Rigify_Meta)
 
 # ---------------------------------------------------------------------------------

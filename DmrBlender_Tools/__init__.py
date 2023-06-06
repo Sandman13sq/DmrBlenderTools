@@ -3,9 +3,8 @@ bl_info = {
     'description': 'A collection of operators and panels to speed up efficiency in Blender.',
     'author': 'Dreamer13sq',
     'version': (1, 0),
-    'blender': (3, 0, 0),
+    'blender': (3, 5, 0),
     'category': 'All',
-    'version': (0, 1),
     'support': 'COMMUNITY',
     'doc_url': 'https://github.com/Dreamer13sq/DmrBlenderTools/wiki'
 }
@@ -15,9 +14,12 @@ import bpy
 #from . import utilities, dmr_hotmenu, dmr_misc_op, dmr_pose_op, dmr_sculpt_op, dmr_shapekey_op, dmr_vcolor_op, dmr_vertex_op, dmr_vgroup_op, dmr_pose_panel, dmr_shapekey_panel, dmr_vcolor_panel, dmr_vgroup_panel
 
 modulesNames = [
-    'utilities',
     'dmr_hotmenu',
     
+    'dmr_op_object',
+    'dmr_op_pose',
+    'dmr_op_image',
+    'dmr_op_action',
     'dmr_op_misc',
     'dmr_op_armature',
     'dmr_op_sculpt',
@@ -25,10 +27,6 @@ modulesNames = [
     'dmr_op_vcolor',
     'dmr_op_vgroup',
     'dmr_op_uv',
-    'dmr_op_object',
-    'dmr_op_pose',
-    'dmr_op_image',
-    'dmr_op_action',
     
     'dmr_panel_armature',
     'dmr_panel_shapekey',
@@ -64,6 +62,7 @@ def register():
     for currentModuleName in modulesFullNames.values():
         if currentModuleName in sys.modules:
             if hasattr(sys.modules[currentModuleName], 'register'):
+                print(currentModuleName)
                 sys.modules[currentModuleName].register()
  
 def unregister():
@@ -73,4 +72,9 @@ def unregister():
                 sys.modules[currentModuleName].unregister()
  
 if __name__ == "__main__":
+    try:
+        unregister()
+    except:
+        []
+    
     register()

@@ -943,6 +943,12 @@ class DMR_OP_PaintVertexColorAll(bpy.types.Operator):
     bl_description = 'Paints colors of selected loops with stored pick colors by layer name'
     bl_options = {'REGISTER', 'UNDO'}
     
+    create_layers : bpy.props.BoolProperty(
+        name="Create Layers", 
+        description="Creates layers if picked layers do not exist",
+        default=False
+        )
+    
     def execute(self, context):
         lastobjectmode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode = 'OBJECT') # Update selected
@@ -956,7 +962,7 @@ class DMR_OP_PaintVertexColorAll(bpy.types.Operator):
         polys = tuple(mesh.polygons)
         loops = tuple(mesh.loops)
         
-        targetpolys = [p for p in polys if (p.hide and p.select)]
+        targetpolys = [p for p in polys if (p.select and not p.hide)]
         usedverts = [vi for p in targetpolys for vi in p.vertices]
         targetloops = [l for p in polys if p in targetpolys for l in p.loop_indices]
         targetloops += [l.index for l in loops if (l.vertex_index not in usedverts and verts[l.vertex_index].select and not verts[l.vertex_index].hide)]
@@ -965,10 +971,17 @@ class DMR_OP_PaintVertexColorAll(bpy.types.Operator):
             self.report({'WARNING'}, 'No loops selected')
         else:
             print("{0} Loops selected".format(len(targetloops)))
+            print("Why")
+            
+            vclayers = mesh.color_attributes
             
             for pick in netpick:
-                if pick.layer in mesh.color_attributes.keys():
-                    lyr = mesh.color_attributes[pick.layer]
+                if self.create_layers:
+                    if pick.layer not in vclayers.keys():
+                        vclayers.new(pick.layer, 'BYTE_COLOR', 'CORNER')
+            
+                if pick.layer in vclayers.keys():
+                    lyr = vclayers[pick.layer]
                     
                     for l in targetloops:
                         lyr.data[l].color = pick.color
@@ -976,6 +989,7 @@ class DMR_OP_PaintVertexColorAll(bpy.types.Operator):
         bpy.ops.object.mode_set(mode = lastobjectmode) # Return to last mode
         return {'FINISHED'}
 classlist.append(DMR_OP_PaintVertexColorAll)
+
 '# =========================================================================================================================='
 '# REGISTER'
 '# =========================================================================================================================='
@@ -987,7 +1001,4 @@ def register():
 def unregister():
     for c in classlist[::-1]:
         bpy.utils.unregister_class(c)
-
-if __name__ == "__main__":
-    register()
 

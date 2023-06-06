@@ -10,7 +10,7 @@ bl_info = {
     'description': 'Bake to separate image textures, then combine to a final texture. Use for compositing game textures (like PRM).',
     'author': 'Dreamer13sq',
     'version': (1, 0),
-    'blender': (3, 0, 0),
+    'blender': (3, 5, 1),
     'category': 'Render',
     'support': 'COMMUNITY',
 }
@@ -285,7 +285,10 @@ def ImageFrom4(
     print('> Cleaning Up...')
     
     for ndtree, nd in tempnodes:
-        ndtree.nodes.remove(nd)
+        try:
+            ndtree.nodes.remove(nd)
+        except:
+            []
     
     [bpy.data.images.remove(img) for img in tempimages if img]
     
