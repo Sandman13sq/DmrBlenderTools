@@ -531,6 +531,41 @@ classlist.append(DMR_OP_SnapVerticesOfMultipleObjects)
 
 # =============================================================================
 
+class DMR_OP_BakeDataTransfer(bpy.types.Operator):
+    bl_label = "Bake Data Transfer"
+    bl_idname = 'dmr.bake_data_transfer'
+    bl_description = 'Duplicates and applies all data transfer modifiers for selected objects'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    hide_viewport : bpy.props.BoolProperty(name="Hide Viewport", default=True)
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=200)
+    
+    def execute(self, context):
+        active = context.active_object
+        for obj in context.selected_objects:
+            context.view_layer.objects.active = obj
+            modifiers = list(obj.modifiers)
+            for i,m in enumerate(obj.modifiers):
+                if m.name[0] in "~- ":
+                    continue
+                
+                if m.type == 'DATA_TRANSFER':
+                    print(m.name)
+                    bpy.ops.object.modifier_copy(modifier=m.name)
+                    bpy.ops.object.modifier_apply(modifier=[x for x in obj.modifiers if x not in modifiers][0].name)
+                    
+                    if self.hide_viewport:
+                        m.show_viewport = False
+        
+        context.view_layer.objects.active = active
+        
+        return {'FINISHED'}
+classlist.append(DMR_OP_BakeDataTransfer)
+
+# =============================================================================
+
 def register():
     for c in classlist:
         bpy.utils.register_class(c)
