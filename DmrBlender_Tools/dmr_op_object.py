@@ -537,6 +537,7 @@ class DMR_OP_BakeDataTransfer(bpy.types.Operator):
     bl_description = 'Duplicates and applies all data transfer modifiers for selected objects'
     bl_options = {'REGISTER', 'UNDO'}
     
+    clean_threshold : bpy.props.FloatProperty(name="Clean Threshold")
     hide_viewport : bpy.props.BoolProperty(name="Hide Viewport", default=True)
     
     def invoke(self, context, event):
@@ -544,9 +545,23 @@ class DMR_OP_BakeDataTransfer(bpy.types.Operator):
     
     def execute(self, context):
         active = context.active_object
+        
         for obj in context.selected_objects:
+            deformgroups = []
+            rigobj = obj.find_armature()
+            if rigobj:
+                deformnames = [b.name for b in rigobj.data.bones if b.use_deform]
+                deformgroups = tuple([vg.index for vg in obj.vertex_groups if vg.name in deformnames])
+            
             context.view_layer.objects.active = obj
             modifiers = list(obj.modifiers)
+            verts = tuple(obj.data.vertices)
+            hits = 0
+            
+            print(obj.name)
+            
+            # Apply modifiers
+            print("Apply Mods")
             for i,m in enumerate(obj.modifiers):
                 if m.name[0] in "~- ":
                     continue
@@ -558,6 +573,21 @@ class DMR_OP_BakeDataTransfer(bpy.types.Operator):
                     
                     if self.hide_viewport:
                         m.show_viewport = False
+                    hits += 1
+            
+            # Clean weights
+            if hits > 0:
+                print("Clean Weights")
+                vgroups = obj.vertex_groups
+                for vi, v in enumerate(verts):
+                    deformelements = [vge for vge in v.groups if vge.index in deformgroups]
+                    
+                    if len(deformelements):
+                        d = sum([vge.weight for vge in deformelements])
+                        for vge in deformelements:
+                            vge.weight *= len(deformelements)/d
+                        
+                        [vgroups[vge.group].remove([vi]) for vge in list(v.groups)[::-1] if vge.weight <= clean_threshold]
         
         context.view_layer.objects.active = active
         
